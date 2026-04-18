@@ -1,13 +1,13 @@
-"""Exports públicos do pacote easy-ai-api.
+"""Exports públicos do pacote easy-ai-clients.
 
 Última atualização: 2026-04-18
 """
 
 from ._core.config import VERSION
-from .client import EasyAiApi
+from .client import EasyAiClient
 from .exceptions import (
     ConfigurationError,
-    EasyAiApiError,
+    EasyAiClientError,
     IncompatibleParameterError,
     InvalidParameterError,
     InvalidProviderResponseError,
@@ -42,8 +42,8 @@ from .models import (
 
 __all__ = [
     "ConfigurationError",
-    "EasyAiApi",
-    "EasyAiApiError",
+    "EasyAiClient",
+    "EasyAiClientError",
     "ImageCompositionRequest",
     "ImageEditRequest",
     "ImageGenerationRequest",

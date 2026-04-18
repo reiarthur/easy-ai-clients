@@ -1,6 +1,6 @@
 import pytest
 
-from easy_ai_api import image
+from easy_ai_clients import image
 
 
 class _FakeImageAdapter:

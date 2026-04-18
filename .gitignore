@@ -1,7 +1,7 @@
 # Credenciais e ambiente
 .env
 .venv
-.venv-easy-ai-api
+.venv-easy-ai-clients
 
 # Build e distribuição
 build/

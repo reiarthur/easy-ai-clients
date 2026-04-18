@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from easy_ai_api import video
-from easy_ai_api._core.exceptions import UnsupportedProviderError
+from easy_ai_clients import video
+from easy_ai_clients._core.exceptions import UnsupportedProviderError
 
 
 class _FakeVideoAdapter:

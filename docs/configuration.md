@@ -1,6 +1,6 @@
 # Configuration
 
-`easy-ai-api` resolves credentials lazily:
+`easy-ai-clients` resolves credentials lazily:
 
 1. values passed through `credentials={...}`
 2. environment variables from the current process
@@ -34,7 +34,7 @@ Use `python-dotenv` in the application entrypoint, not inside the library itself
 ## Explicit credentials per call
 
 ```python
-from easy_ai_api.text import generate
+from easy_ai_clients.text import generate
 
 result = generate(
     provider="openai",
@@ -46,9 +46,9 @@ result = generate(
 ## Client-wide shared credentials
 
 ```python
-from easy_ai_api import EasyAiApi
+from easy_ai_clients import EasyAiClient
 
-client = EasyAiApi(
+client = EasyAiClient(
     credentials={"OPENAI_API_KEY": "sk-..."},
     timeout_seconds=90,
     max_retries=4,

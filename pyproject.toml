@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "easy-ai-api"
+name = "easy-ai-clients"
 version = "0.2.0"
 description = "Unified multimodal multi-provider Python toolkit for text, audio, image, and video generation."
 readme = "README.md"
@@ -59,12 +59,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://pypi.org/project/easy-ai-api/"
-Repository = "https://github.com/reiarthur/easy-ai-api"
-Issues = "https://github.com/reiarthur/easy-ai-api/issues"
+Homepage = "https://pypi.org/project/easy-ai-clients/"
+Repository = "https://github.com/reiarthur/easy-ai-clients"
+Issues = "https://github.com/reiarthur/easy-ai-clients/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/easy_ai_api"]
+packages = ["src/easy_ai_clients"]
 
 [tool.hatch.build.targets.sdist]
 include = [

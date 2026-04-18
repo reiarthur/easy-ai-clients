@@ -1,7 +1,7 @@
 import pytest
 
-from easy_ai_api._core.aliases import normalizar_api
-from easy_ai_api.models import TextGenerationRequest
+from easy_ai_clients._core.aliases import normalizar_api
+from easy_ai_clients.models import TextGenerationRequest
 
 
 def test_normalize_provider_aliases() -> None:

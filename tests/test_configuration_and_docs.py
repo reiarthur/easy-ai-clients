@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from easy_ai_api import text
-from easy_ai_api._core.provider_catalog import KNOWN_CREDENTIAL_ENV_VARS, PROVIDER_SPECS
-from easy_ai_api.exceptions import MissingCredentialError
+from easy_ai_clients import text
+from easy_ai_clients._core.provider_catalog import KNOWN_CREDENTIAL_ENV_VARS, PROVIDER_SPECS
+from easy_ai_clients.exceptions import MissingCredentialError
 
 ROOT = Path(__file__).resolve().parents[1]
 

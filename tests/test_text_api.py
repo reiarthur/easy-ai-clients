@@ -1,9 +1,9 @@
 import pytest
 
-from easy_ai_api import text
-from easy_ai_api._core.exceptions import IncompatibleParameterError
-from easy_ai_api._core.schemas import TextoParaTextoResultado
-from easy_ai_api.models import TextGenerationRequest
+from easy_ai_clients import text
+from easy_ai_clients._core.exceptions import IncompatibleParameterError
+from easy_ai_clients._core.schemas import TextoParaTextoResultado
+from easy_ai_clients.models import TextGenerationRequest
 
 
 class _FakeTextAdapter:

@@ -1,11 +1,11 @@
-"""Exceções públicas disparadas por easy-ai-api.
+"""Exceções públicas disparadas por easy-ai-clients.
 
 Última atualização: 2026-04-18
 """
 
 from ._core.exceptions import (
     ConfigurationError,
-    EasyAiApiError,
+    EasyAiClientError,
     IncompatibleParameterError,
     InvalidParameterError,
     InvalidProviderResponseError,
@@ -20,7 +20,7 @@ from ._core.exceptions import (
 
 __all__ = [
     "ConfigurationError",
-    "EasyAiApiError",
+    "EasyAiClientError",
     "IncompatibleParameterError",
     "InvalidParameterError",
     "InvalidProviderResponseError",

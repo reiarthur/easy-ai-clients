@@ -1,5 +1,5 @@
-from easy_ai_api.audio.providers import build_audio_registries
-from easy_ai_api.text.providers import build_text_registry
+from easy_ai_clients.audio.providers import build_audio_registries
+from easy_ai_clients.text.providers import build_text_registry
 
 
 def test_text_registry_resolves_env_lazily(monkeypatch) -> None:

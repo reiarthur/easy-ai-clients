@@ -1,4 +1,4 @@
-"""Helpers públicos de geração de texto de easy-ai-api.
+"""Helpers públicos de geração de texto de easy-ai-clients.
 
 Última atualização: 2026-04-18
 """

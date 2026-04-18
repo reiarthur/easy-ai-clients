@@ -10,7 +10,7 @@ from decimal import Decimal
 from .provider_catalog import KNOWN_CREDENTIAL_ENV_VARS as _KNOWN_CREDENTIAL_ENV_VARS
 
 VERSION = "0.2.0"
-USER_AGENT = f"easy-ai-api/{VERSION}"
+USER_AGENT = f"easy-ai-clients/{VERSION}"
 
 DEFAULT_TIMEOUT_SECONDS = 60.0
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 180.0

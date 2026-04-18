@@ -1,10 +1,10 @@
-# easy-ai-api
+# easy-ai-clients
 
-[![PyPI version](https://img.shields.io/pypi/v/easy-ai-api.svg)](https://pypi.org/project/easy-ai-api/)
-[![Python versions](https://img.shields.io/pypi/pyversions/easy-ai-api.svg)](https://pypi.org/project/easy-ai-api/)
+[![PyPI version](https://img.shields.io/pypi/v/easy-ai-clients.svg)](https://pypi.org/project/easy-ai-clients/)
+[![Python versions](https://img.shields.io/pypi/pyversions/easy-ai-clients.svg)](https://pypi.org/project/easy-ai-clients/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-`easy-ai-api` is a typed, multimodal Python library that wraps multiple AI providers behind a single public API for:
+`easy-ai-clients` is a typed, multimodal Python library that wraps multiple AI providers behind a single public API for:
 
 - **Text generation** — chat, instructions, reasoning, tool use, batch, optional image inputs (vision)
 - **Speech transcription** — audio to text with word timings and speaker diarization
@@ -27,7 +27,7 @@ All operations are available in synchronous and asynchronous variants. Provider 
 ## Install
 
 ```bash
-pip install easy-ai-api
+pip install easy-ai-clients
 ```
 
 For local development (includes test and lint tools):
@@ -39,19 +39,19 @@ pip install -e ".[dev]"
 ## Checking the version
 
 ```python
-import easy_ai_api
+import easy_ai_clients
 
-print(easy_ai_api.__version__)
+print(easy_ai_clients.__version__)
 ```
 
 ## Configuration
 
 Credentials are resolved lazily, in this order:
 
-1. Explicit `credentials={...}` values passed to a call or to `EasyAiApi(...)`.
+1. Explicit `credentials={...}` values passed to a call or to `EasyAiClient(...)`.
 2. Environment variables from the current process.
 
-`easy-ai-api` does **not** auto-load `.env` files, keeping imports side-effect free.
+`easy-ai-clients` does **not** auto-load `.env` files, keeping imports side-effect free.
 
 ### Environment variable setup
 
@@ -79,7 +79,7 @@ See [`docs/configuration.md`](docs/configuration.md) for full details and per-ca
 ### Text generation
 
 ```python
-from easy_ai_api.text import generate
+from easy_ai_clients.text import generate
 
 result = generate(
     provider="openai",
@@ -96,7 +96,7 @@ print(result.cost_usd)
 Pass one or more images via `input_images` to describe them, transcribe text in the image, or answer questions grounded in visual content. Accepts local paths, raw `bytes`, or base64 strings.
 
 ```python
-from easy_ai_api.text import generate
+from easy_ai_clients.text import generate
 
 result = generate(
     provider="openai",
@@ -113,7 +113,7 @@ Vision-capable providers include `openai`, `google`, `anthropic`, and any provid
 ### Speech transcription
 
 ```python
-from easy_ai_api.audio import transcribe
+from easy_ai_clients.audio import transcribe
 
 result = transcribe(
     provider="deepgram",
@@ -133,7 +133,7 @@ for segment in result.speaker_segments:
 ### Speech synthesis
 
 ```python
-from easy_ai_api.audio import synthesize
+from easy_ai_clients.audio import synthesize
 
 result = synthesize(
     provider="elevenlabs",
@@ -150,7 +150,7 @@ with open("output.mp3", "wb") as f:
 ### Music generation
 
 ```python
-from easy_ai_api.audio import compose
+from easy_ai_clients.audio import compose
 
 result = compose(
     provider="stability",
@@ -168,7 +168,7 @@ with open("music.mp3", "wb") as f:
 ### Image generation
 
 ```python
-from easy_ai_api.image import generate
+from easy_ai_clients.image import generate
 
 result = generate(
     provider="openai",
@@ -187,7 +187,7 @@ with open("output.png", "wb") as f:
 Takes an existing image and transforms it according to a prompt.
 
 ```python
-from easy_ai_api.image import transform
+from easy_ai_clients.image import transform
 
 result = transform(
     provider="stability",
@@ -212,7 +212,7 @@ Typical prompts: *"render the person of image 1 in the pose of image 2"*,
 scene of image 2"*.
 
 ```python
-from easy_ai_api.image import compose
+from easy_ai_clients.image import compose
 
 result = compose(
     provider="google",
@@ -233,7 +233,7 @@ with open("composed.png", "wb") as f:
 Edits specific regions of an image using a prompt. Pass a `mask` to limit edits to the masked area.
 
 ```python
-from easy_ai_api.image import edit
+from easy_ai_clients.image import edit
 
 result = edit(
     provider="openai",
@@ -254,7 +254,7 @@ with open("edited.png", "wb") as f:
 Video files are written directly to a local path. Long-running jobs are polled until completion.
 
 ```python
-from easy_ai_api.video import generate
+from easy_ai_clients.video import generate
 
 result = generate(
     provider="runway",
@@ -269,7 +269,7 @@ print(result.output_path)  # pathlib.Path to the written file
 To generate a video driven by both a reference image and an audio track:
 
 ```python
-from easy_ai_api.video import generate
+from easy_ai_clients.video import generate
 
 result = generate(
     provider="heygen",
@@ -285,7 +285,7 @@ result = generate(
 Animate a still image or avatar portrait using a supplied audio track.
 
 ```python
-from easy_ai_api.video import lipsync
+from easy_ai_clients.video import lipsync
 
 result = lipsync(
     provider="heygen",
@@ -302,12 +302,12 @@ print(result.output_path)
 
 ## Stateful client
 
-Use `EasyAiApi` to share credentials and default settings across many calls:
+Use `EasyAiClient` to share credentials and default settings across many calls:
 
 ```python
-from easy_ai_api import EasyAiApi
+from easy_ai_clients import EasyAiClient
 
-client = EasyAiApi(
+client = EasyAiClient(
     credentials={"OPENAI_API_KEY": "sk-..."},
     timeout_seconds=90,
     job_timeout_seconds=900,
@@ -342,8 +342,8 @@ Every helper has an `_async` variant. Combine them with `asyncio.gather` for con
 ```python
 import asyncio
 
-from easy_ai_api.image import generate_async
-from easy_ai_api.text import generate_async as text_generate_async
+from easy_ai_clients.image import generate_async
+from easy_ai_clients.text import generate_async as text_generate_async
 
 
 async def main() -> None:
@@ -370,11 +370,11 @@ asyncio.run(main())
 
 ## Public API
 
-### `easy_ai_api.text`
+### `easy_ai_clients.text`
 
 ```python
-from easy_ai_api.text import batch_generate, batch_generate_async, generate, generate_async
-from easy_ai_api.models import TextGenerationRequest, TextGenerationResult
+from easy_ai_clients.text import batch_generate, batch_generate_async, generate, generate_async
+from easy_ai_clients.models import TextGenerationRequest, TextGenerationResult
 ```
 
 | Function | Description |
@@ -384,15 +384,15 @@ from easy_ai_api.models import TextGenerationRequest, TextGenerationResult
 | `batch_generate(requests, ...)` | Run multiple requests to the same provider concurrently. |
 | `batch_generate_async(...)` | Async variant. |
 
-### `easy_ai_api.audio`
+### `easy_ai_clients.audio`
 
 ```python
-from easy_ai_api.audio import (
+from easy_ai_clients.audio import (
     compose, compose_async,
     synthesize, synthesize_async,
     transcribe, transcribe_async,
 )
-from easy_ai_api.models import (
+from easy_ai_clients.models import (
     MusicGenerationRequest, MusicGenerationResult,
     SpeechSynthesisRequest, SpeechSynthesisResult,
     SpeechTranscriptionRequest, SpeechTranscriptionResult,
@@ -405,16 +405,16 @@ from easy_ai_api.models import (
 | `synthesize(provider, text, ...)` | Synthesize speech audio from text. |
 | `compose(provider, prompt, ...)` | Generate instrumental music from a text prompt. |
 
-### `easy_ai_api.image`
+### `easy_ai_clients.image`
 
 ```python
-from easy_ai_api.image import (
+from easy_ai_clients.image import (
     compose, compose_async,
     edit, edit_async,
     generate, generate_async,
     transform, transform_async,
 )
-from easy_ai_api.models import (
+from easy_ai_clients.models import (
     ImageCompositionRequest,
     ImageEditRequest,
     ImageGenerationRequest,
@@ -430,11 +430,11 @@ from easy_ai_api.models import (
 | `compose(provider, prompt, image, reference_image, ...)` | Combine a base image with a reference image using a prompt. |
 | `edit(provider, prompt, image, ...)` | Edit an image region with an optional mask. |
 
-### `easy_ai_api.video`
+### `easy_ai_clients.video`
 
 ```python
-from easy_ai_api.video import generate, generate_async, lipsync, lipsync_async
-from easy_ai_api.models import LipSyncRequest, VideoGenerationRequest, VideoResult
+from easy_ai_clients.video import generate, generate_async, lipsync, lipsync_async
+from easy_ai_clients.models import LipSyncRequest, VideoGenerationRequest, VideoResult
 ```
 
 | Function | Description |
@@ -445,9 +445,9 @@ from easy_ai_api.models import LipSyncRequest, VideoGenerationRequest, VideoResu
 ### Exceptions
 
 ```python
-from easy_ai_api.exceptions import (
+from easy_ai_clients.exceptions import (
     ConfigurationError,
-    EasyAiApiError,
+    EasyAiClientError,
     IncompatibleParameterError,
     InvalidParameterError,
     InvalidProviderResponseError,
@@ -583,11 +583,11 @@ See [`docs/errors.md`](docs/errors.md) for descriptions and handling patterns.
 
 ## Error handling
 
-`easy-ai-api` uses typed exceptions so your code can handle failures intentionally.
+`easy-ai-clients` uses typed exceptions so your code can handle failures intentionally.
 
 ```python
-from easy_ai_api.exceptions import MissingCredentialError, UnsupportedProviderError
-from easy_ai_api.text import generate
+from easy_ai_clients.exceptions import MissingCredentialError, UnsupportedProviderError
+from easy_ai_clients.text import generate
 
 try:
     result = generate(provider="openai", instructions="Write one sentence.")

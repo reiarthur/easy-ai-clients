@@ -1,7 +1,7 @@
 import pytest
 
-from easy_ai_api import audio
-from easy_ai_api._core.schemas import (
+from easy_ai_clients import audio
+from easy_ai_clients._core.schemas import (
     AudioParaTextoResultado,
     PalavraTemporizada,
     TextoParaAudioResultado,

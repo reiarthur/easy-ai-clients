@@ -22,9 +22,9 @@ class _ClientDefaults:
 
 
 class _BaseFacade:
-    """Base helper used by the modality namespaces exposed on ``EasyAiApi``."""
+    """Base helper used by the modality namespaces exposed on ``EasyAiClient``."""
 
-    def __init__(self, client: EasyAiApi) -> None:
+    def __init__(self, client: EasyAiClient) -> None:
         self._client = client
 
     def _with_defaults(self, kwargs: dict[str, object], *, job: bool = False) -> dict[str, object]:
@@ -46,7 +46,7 @@ class _TextFacade(_BaseFacade):
     """Stateful namespace for text generation helpers."""
 
     def generate(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.text.generate` com defaults do cliente."""
+        """Chama :func:`easy_ai_clients.text.generate` com defaults do cliente."""
 
         return text_api.generate(
             request,
@@ -64,7 +64,7 @@ class _TextFacade(_BaseFacade):
         )
 
     def batch_generate(self, requests, /, **kwargs):
-        """Chama :func:`easy_ai_api.text.batch_generate` com credenciais compartilhadas."""
+        """Chama :func:`easy_ai_clients.text.batch_generate` com credenciais compartilhadas."""
 
         return text_api.batch_generate(requests, credentials=self._client.credentials, **kwargs)
 
@@ -82,7 +82,7 @@ class _AudioFacade(_BaseFacade):
     """Stateful namespace for audio helpers."""
 
     def transcribe(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.audio.transcribe` com defaults compartilhados."""
+        """Chama :func:`easy_ai_clients.audio.transcribe` com defaults compartilhados."""
 
         return audio_api.transcribe(
             request,
@@ -100,7 +100,7 @@ class _AudioFacade(_BaseFacade):
         )
 
     def synthesize(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.audio.synthesize` com defaults compartilhados."""
+        """Chama :func:`easy_ai_clients.audio.synthesize` com defaults compartilhados."""
 
         return audio_api.synthesize(
             request,
@@ -118,7 +118,7 @@ class _AudioFacade(_BaseFacade):
         )
 
     def compose(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.audio.compose` com defaults compartilhados."""
+        """Chama :func:`easy_ai_clients.audio.compose` com defaults compartilhados."""
 
         return audio_api.compose(
             request,
@@ -140,7 +140,7 @@ class _ImageFacade(_BaseFacade):
     """Stateful namespace for image helpers."""
 
     def generate(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.image.generate` com defaults compartilhados."""
+        """Chama :func:`easy_ai_clients.image.generate` com defaults compartilhados."""
 
         return image_api.generate(
             request,
@@ -158,7 +158,7 @@ class _ImageFacade(_BaseFacade):
         )
 
     def transform(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.image.transform` com defaults compartilhados."""
+        """Chama :func:`easy_ai_clients.image.transform` com defaults compartilhados."""
 
         return image_api.transform(
             request,
@@ -176,7 +176,7 @@ class _ImageFacade(_BaseFacade):
         )
 
     def compose(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.image.compose` com defaults compartilhados."""
+        """Chama :func:`easy_ai_clients.image.compose` com defaults compartilhados."""
 
         return image_api.compose(
             request,
@@ -194,7 +194,7 @@ class _ImageFacade(_BaseFacade):
         )
 
     def edit(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.image.edit` com defaults compartilhados."""
+        """Chama :func:`easy_ai_clients.image.edit` com defaults compartilhados."""
 
         return image_api.edit(
             request,
@@ -216,7 +216,7 @@ class _VideoFacade(_BaseFacade):
     """Stateful namespace for video helpers."""
 
     def generate(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.video.generate` com defaults de job."""
+        """Chama :func:`easy_ai_clients.video.generate` com defaults de job."""
 
         return video_api.generate(
             request,
@@ -234,7 +234,7 @@ class _VideoFacade(_BaseFacade):
         )
 
     def lipsync(self, request=None, /, **kwargs):
-        """Chama :func:`easy_ai_api.video.lipsync` com defaults de job."""
+        """Chama :func:`easy_ai_clients.video.lipsync` com defaults de job."""
 
         return video_api.lipsync(
             request,
@@ -252,7 +252,7 @@ class _VideoFacade(_BaseFacade):
         )
 
 
-class EasyAiApi:
+class EasyAiClient:
     """Cliente com credenciais e defaults compartilhados para todas as chamadas.
 
     Args:

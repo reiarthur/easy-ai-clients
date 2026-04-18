@@ -10,13 +10,13 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.2.0] — 2026-04-18
 
 ### Changed
-- **Project renamed from `multisynth` to `easy-ai-api`.** The PyPI package is now published as `easy-ai-api`; the Python import name is `easy_ai_api`. Update imports from `multisynth.*` to `easy_ai_api.*`.
-- The stateful client class `Multisynth` was renamed to `EasyAiApi`.
-- The base exception `MultisynthError` was renamed to `EasyAiApiError`.
+- **Project renamed from `multisynth` to `easy-ai-clients`.** The PyPI package is now published as `easy-ai-clients`; the Python import name is `easy_ai_clients`. Update imports from `multisynth.*` to `easy_ai_clients.*`.
+- The stateful client class `Multisynth` was renamed to `EasyAiClient`.
+- The base exception `MultisynthError` was renamed to `EasyAiClientError`.
 - Internal portuguese alias `NovaIntegracaoError` continues to exist for backward compatibility.
 
 ### Added
-- `easy_ai_api.image.compose` / `compose_async` — **new image composition operation** that combines a base image with a reference image using a prompt. Typical prompts: *"render the person of image 1 in the pose of image 2"*, *"image 1 in the style of image 2"*. Providers: `google`, `bfl`.
+- `easy_ai_clients.image.compose` / `compose_async` — **new image composition operation** that combines a base image with a reference image using a prompt. Typical prompts: *"render the person of image 1 in the pose of image 2"*, *"image 1 in the style of image 2"*. Providers: `google`, `bfl`.
 - `ImageCompositionRequest` — new public Pydantic model for the compose operation.
 - `client.image.compose` / `compose_async` — stateful-client wrappers for the new operation.
 - New text providers: `deepinfra` (`DEEPINFRA_API_KEY`) and `huggingface` (`HUGGINGFACE_API_KEY`).
@@ -30,8 +30,8 @@ from multisynth import Multisynth
 from multisynth.exceptions import MultisynthError
 
 # After (0.2.0)
-from easy_ai_api import EasyAiApi
-from easy_ai_api.exceptions import EasyAiApiError
+from easy_ai_clients import EasyAiClient
+from easy_ai_clients.exceptions import EasyAiClientError
 ```
 
 ---

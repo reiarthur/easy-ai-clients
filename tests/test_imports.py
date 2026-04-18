@@ -1,8 +1,8 @@
-from easy_ai_api import EasyAiApi, audio, image, text, video
+from easy_ai_clients import EasyAiClient, audio, image, text, video
 
 
 def test_public_import_smoke() -> None:
-    client = EasyAiApi()
+    client = EasyAiClient()
     assert text.generate.__name__ == "generate"
     assert audio.transcribe.__name__ == "transcribe"
     assert image.generate.__name__ == "generate"

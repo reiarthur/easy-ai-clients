@@ -1,4 +1,4 @@
-"""Modelos públicos canônicos de easy-ai-api.
+"""Modelos públicos canônicos de easy-ai-clients.
 
 Última atualização: 2026-04-18
 """
@@ -66,7 +66,7 @@ class SpeakerSegment(PublicModel):
 
 
 class TextGenerationRequest(PublicModel):
-    """Request payload for ``easy_ai_api.text`` helpers.
+    """Request payload for ``easy_ai_clients.text`` helpers.
 
     Attributes:
         provider: Provider name or supported alias.
