@@ -35,7 +35,7 @@ def build_text_registry(credentials: Mapping[str, str] | CredentialStore | None 
         OpenAICompatibleTextAdapter(
             provider="openai",
             default_model="gpt-5-mini",
-            supported_models=frozenset({"gpt-5-mini", "gpt-5.4-mini"}),
+            supported_models=frozenset({"gpt-5-mini"}),
             api_key=store.resolve("OPENAI_API_KEY"),
             aliases=frozenset({"open-ai"}),
             base_url=BASE_URL_OPENAI,
@@ -70,15 +70,15 @@ def build_text_registry(credentials: Mapping[str, str] | CredentialStore | None 
         OpenAICompatibleTextAdapter(
             provider="deepseek",
             default_model="deepseek-chat",
-            supported_models=frozenset({"deepseek-chat"}),
+            supported_models=frozenset({"deepseek-chat", "deepseek-reasoner"}),
             api_key=store.resolve("DEEPSEEK_API_KEY"),
             base_url=BASE_URL_DEEPSEEK,
             credential_env_vars=get_required_env_vars("text", "generate", "deepseek"),
         ),
         OpenAICompatibleTextAdapter(
             provider="openrouter",
-            default_model="openai/gpt-oss-20b:nitro",
-            supported_models=frozenset({"openai/gpt-oss-20b:nitro"}),
+            default_model="openai/gpt-oss-20b",
+            supported_models=frozenset({"openai/gpt-oss-20b"}),
             api_key=store.resolve("OPENROUTER_API_KEY"),
             base_url=BASE_URL_OPENROUTER,
             extra_headers={"X-Title": USER_AGENT},
@@ -95,8 +95,8 @@ def build_text_registry(credentials: Mapping[str, str] | CredentialStore | None 
         ),
         OpenAICompatibleTextAdapter(
             provider="mistral",
-            default_model="mistral-medium-2508+1",
-            supported_models=frozenset({"mistral-medium-2508+1"}),
+            default_model="mistral-medium-3-2508",
+            supported_models=frozenset({"mistral-medium-3-2508"}),
             api_key=store.resolve("MISTRAL_API_KEY"),
             aliases=frozenset({"mistralai"}),
             base_url=BASE_URL_MISTRAL,
@@ -104,8 +104,13 @@ def build_text_registry(credentials: Mapping[str, str] | CredentialStore | None 
         ),
         AnthropicTextAdapter(
             provider="anthropic",
-            default_model="claude-sonnet-4-5",
-            supported_models=frozenset({"claude-sonnet-4-5"}),
+            default_model="claude-opus-4-7",
+            supported_models=frozenset({
+                "claude-opus-4-7",
+                "claude-sonnet-4-6",
+                "claude-haiku-4-5",
+                "claude-sonnet-4-5",
+            }),
             api_key=store.resolve("ANTHROPIC_API_KEY"),
             credential_env_vars=get_required_env_vars("text", "generate", "anthropic"),
         ),
@@ -127,7 +132,12 @@ def build_text_registry(credentials: Mapping[str, str] | CredentialStore | None 
         OpenAICompatibleTextAdapter(
             provider="perplexity",
             default_model="sonar-pro",
-            supported_models=frozenset({"sonar-pro"}),
+            supported_models=frozenset({
+                "sonar",
+                "sonar-pro",
+                "sonar-reasoning-pro",
+                "sonar-deep-research",
+            }),
             api_key=store.resolve("PERPLEXITY_API_KEY"),
             base_url=BASE_URL_PERPLEXITY,
             credential_env_vars=get_required_env_vars("text", "generate", "perplexity"),

@@ -1,6 +1,6 @@
 """Exports públicos do pacote easy-ai-clients.
 
-Última atualização: 2026-04-18
+Última atualização: 2026-04-19
 """
 
 from ._core.config import VERSION

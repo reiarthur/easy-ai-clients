@@ -43,11 +43,6 @@ PRICING_TABLE: dict[str, dict[str, TextPricing]] = {
             output_per_million=Decimal("2.00"),
             cached_input_per_million=Decimal("0.025"),
         ),
-        "gpt-5.4-mini": TextPricing(
-            input_per_million=Decimal("0.75"),
-            output_per_million=Decimal("4.50"),
-            cached_input_per_million=Decimal("0.075"),
-        ),
     },
     "groq": {
         "openai/gpt-oss-20b": TextPricing(
@@ -73,9 +68,14 @@ PRICING_TABLE: dict[str, dict[str, TextPricing]] = {
             output_per_million=Decimal("0.42"),
             cached_input_per_million=Decimal("0.028"),
         ),
+        "deepseek-reasoner": TextPricing(
+            input_per_million=Decimal("0.28"),
+            output_per_million=Decimal("0.42"),
+            cached_input_per_million=Decimal("0.028"),
+        ),
     },
     "openrouter": {
-        "openai/gpt-oss-20b:nitro": TextPricing(
+        "openai/gpt-oss-20b": TextPricing(
             input_per_million=Decimal("0.03"),
             output_per_million=Decimal("0.11"),
         ),
@@ -91,12 +91,24 @@ PRICING_TABLE: dict[str, dict[str, TextPricing]] = {
         ),
     },
     "mistral": {
-        "mistral-medium-2508+1": TextPricing(
+        "mistral-medium-3-2508": TextPricing(
             input_per_million=Decimal("0.40"),
             output_per_million=Decimal("2.00"),
         ),
     },
     "anthropic": {
+        "claude-opus-4-7": TextPricing(
+            input_per_million=Decimal("5.00"),
+            output_per_million=Decimal("25.00"),
+        ),
+        "claude-sonnet-4-6": TextPricing(
+            input_per_million=Decimal("3.00"),
+            output_per_million=Decimal("15.00"),
+        ),
+        "claude-haiku-4-5": TextPricing(
+            input_per_million=Decimal("1.00"),
+            output_per_million=Decimal("5.00"),
+        ),
         "claude-sonnet-4-5": TextPricing(
             input_per_million=Decimal("3.00"),
             output_per_million=Decimal("15.00"),
@@ -121,9 +133,21 @@ PRICING_TABLE: dict[str, dict[str, TextPricing]] = {
         ),
     },
     "perplexity": {
+        "sonar": TextPricing(
+            input_per_million=Decimal("1.00"),
+            output_per_million=Decimal("1.00"),
+        ),
         "sonar-pro": TextPricing(
             input_per_million=Decimal("3.00"),
             output_per_million=Decimal("15.00"),
+        ),
+        "sonar-reasoning-pro": TextPricing(
+            input_per_million=Decimal("2.00"),
+            output_per_million=Decimal("8.00"),
+        ),
+        "sonar-deep-research": TextPricing(
+            input_per_million=Decimal("2.00"),
+            output_per_million=Decimal("8.00"),
         ),
     },
     "deepinfra": {

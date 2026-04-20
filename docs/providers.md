@@ -21,6 +21,29 @@ The tables below describe the public provider matrix and the environment variabl
 | `deepinfra` | `DEEPINFRA_API_KEY` |
 | `huggingface` | `HUGGINGFACE_API_KEY` |
 
+### Text generation — supported model IDs (as of 0.3.0)
+
+The text providers below were audited against official documentation in April 2026. The `default_model` is used when no `model` is explicitly passed to `generate(...)`.
+
+| Provider | Default model | Other supported IDs |
+| --- | --- | --- |
+| `openai` | `gpt-5-mini` | — |
+| `groq` | `openai/gpt-oss-20b` | — |
+| `together` | `openai/gpt-oss-20b` | — |
+| `fireworks` | `openai/gpt-oss-20b` | — |
+| `deepseek` | `deepseek-chat` | `deepseek-reasoner` |
+| `openrouter` | `openai/gpt-oss-20b` | — |
+| `xai` | `grok-4-1-fast-reasoning` | — |
+| `mistral` | `mistral-medium-3-2508` | — |
+| `anthropic` | `claude-opus-4-7` | `claude-sonnet-4-6`, `claude-haiku-4-5`, `claude-sonnet-4-5` |
+| `google` | `gemini-2.5-flash` | `gemini-2.5-flash-lite` |
+| `cohere` | `command-a-03-2025` | — |
+| `perplexity` | `sonar-pro` | `sonar`, `sonar-reasoning-pro`, `sonar-deep-research` |
+| `deepinfra` | `openai/gpt-oss-20b` | — |
+| `huggingface` | `meta-llama/Llama-3.1-8B-Instruct` | — |
+
+> Providers not listed in the "Other supported IDs" column above expose only the default model in 0.3.0. Audio, image and video model IDs are not re-audited in 0.3.0 — see the CHANGELOG for scope details.
+
 ## Audio
 
 ### Transcription

@@ -1,6 +1,6 @@
 """Configuração estática do pacote e metadados de providers.
 
-Última atualização: 2026-04-18
+Última atualização: 2026-04-19
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from .provider_catalog import KNOWN_CREDENTIAL_ENV_VARS as _KNOWN_CREDENTIAL_ENV_VARS
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 USER_AGENT = f"easy-ai-clients/{VERSION}"
 
 DEFAULT_TIMEOUT_SECONDS = 60.0

@@ -7,6 +7,24 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.0] — 2026-04-19
+
+### Fixed — provedores de texto auditados contra documentação oficial
+- **OpenAI:** removido `gpt-5.4-mini` (ID inexistente na documentação oficial). `gpt-5-mini` mantido.
+- **Mistral:** corrigido ID `mistral-medium-2508+1` (sufixo `+1` anômalo) para `mistral-medium-3-2508` (ID oficial da família Mistral Medium 3.1).
+- **OpenRouter:** removido sufixo `:nitro` de `openai/gpt-oss-20b:nitro`. O ID canônico documentado é `openai/gpt-oss-20b`. Se precisar de roteamento acelerado, o OpenRouter oferece isso via parâmetros de provider routing (consulte a documentação atual do OpenRouter).
+- **Anthropic:** catálogo atualizado para os modelos atuais documentados em abril de 2026. `default_model` agora é `claude-opus-4-7`. Catálogo completo: `claude-opus-4-7` (default), `claude-sonnet-4-6`, `claude-haiku-4-5`, e `claude-sonnet-4-5` (mantido como legacy).
+
+### Added — modelos novos confirmados em documentação oficial
+- **Anthropic:** adicionados `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5` ao registry e à tabela de precificação.
+- **Perplexity:** adicionados `sonar`, `sonar-reasoning-pro`, `sonar-deep-research` além de `sonar-pro` (default), com pricing oficial em `PRICING_TABLE`.
+- **DeepSeek:** adicionado `deepseek-reasoner` (DeepSeek-V3.2 em modo thinking) ao registry e ao pricing, com as mesmas taxas do `deepseek-chat`.
+
+### Escopo da auditoria
+Esta versão cobriu os providers de texto priorizados (OpenAI, Anthropic, Google, OpenRouter, xAI, Mistral, DeepSeek, Cohere, Perplexity). Os providers de imagem, áudio, vídeo e os demais de texto (Groq, Together, Fireworks, DeepInfra, HuggingFace) não foram re-auditados nesta versão — seus adapters e modelos permanecem inalterados e serão revisados em uma versão futura. Usuários que dependem desses providers devem confirmar manualmente os IDs de modelo contra a documentação oficial de cada fornecedor antes de uso em produção.
+
+---
+
 ## [0.2.0] — 2026-04-18
 
 ### Changed
