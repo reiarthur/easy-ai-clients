@@ -1,77 +1,34 @@
-"""Exports públicos do pacote easy-ai-clients.
+"""easy-ai-clients: a unified Python client for multimodal multi-provider AI.
 
-Última atualização: 2026-04-19
+Importing :mod:`easy_ai_clients` exposes three ergonomic submodules:
+
+- :mod:`easy_ai_clients.text` - text-in / text-out generation.
+- :mod:`easy_ai_clients.audio` - speech synthesis (`generate`) and speech
+  recognition (`transcribe`).
+- :mod:`easy_ai_clients.image` - image generation, editing, remixing, and
+  vision/multimodal analysis.
+
+Each operation accepts an ``api`` keyword argument identifying the provider to
+use. The string must match the file name (without ``.py``) of the internal
+provider module shipped with the library.
+
+Example::
+
+    from easy_ai_clients import text, audio, image
+
+    text.generate("hello", api="openai")
+    audio.generate("hello world", api="openai")
+    audio.transcribe("audio.mp3", api="deepgram")
+    image.analyze("describe this", "photo.png", api="openai")
+    image.edit("make it night", "photo.png", api="openai")
+    image.generate("a corgi", api="openai")
+    image.remix("studio ghibli", ["ref1.png", "ref2.png"], api="openai")
 """
 
-from ._core.config import VERSION
-from .client import EasyAiClient
-from .exceptions import (
-    ConfigurationError,
-    EasyAiClientError,
-    IncompatibleParameterError,
-    InvalidParameterError,
-    InvalidProviderResponseError,
-    JobFailedError,
-    MissingCredentialError,
-    PricingUnavailableError,
-    ProviderTimeoutError,
-    TemporaryDownloadError,
-    UnsupportedModelError,
-    UnsupportedProviderError,
-)
-from .models import (
-    ImageCompositionRequest,
-    ImageEditRequest,
-    ImageGenerationRequest,
-    ImageResult,
-    ImageTransformationRequest,
-    LipSyncRequest,
-    MusicGenerationRequest,
-    MusicGenerationResult,
-    SpeakerSegment,
-    SpeechSynthesisRequest,
-    SpeechSynthesisResult,
-    SpeechTranscriptionRequest,
-    SpeechTranscriptionResult,
-    TextGenerationRequest,
-    TextGenerationResult,
-    VideoGenerationRequest,
-    VideoResult,
-    WordTiming,
-)
+from __future__ import annotations
 
-__all__ = [
-    "ConfigurationError",
-    "EasyAiClient",
-    "EasyAiClientError",
-    "ImageCompositionRequest",
-    "ImageEditRequest",
-    "ImageGenerationRequest",
-    "ImageResult",
-    "ImageTransformationRequest",
-    "IncompatibleParameterError",
-    "InvalidParameterError",
-    "InvalidProviderResponseError",
-    "JobFailedError",
-    "LipSyncRequest",
-    "MissingCredentialError",
-    "MusicGenerationRequest",
-    "MusicGenerationResult",
-    "PricingUnavailableError",
-    "ProviderTimeoutError",
-    "SpeakerSegment",
-    "SpeechSynthesisRequest",
-    "SpeechSynthesisResult",
-    "SpeechTranscriptionRequest",
-    "SpeechTranscriptionResult",
-    "TemporaryDownloadError",
-    "TextGenerationRequest",
-    "TextGenerationResult",
-    "UnsupportedModelError",
-    "UnsupportedProviderError",
-    "VideoGenerationRequest",
-    "VideoResult",
-    "WordTiming",
-]
+from . import audio, image, text
 
-__version__ = VERSION
+__all__ = ["text", "audio", "image", "__version__"]
+
+__version__ = "0.4.0"

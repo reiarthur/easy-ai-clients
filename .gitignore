@@ -1,35 +1,47 @@
-# Credenciais e ambiente
+# Credentials and environment
 .env
+.env.*
+!.env.example
 .venv
-.venv-easy-ai-clients
+.venv-*
+venv/
 
-# Build e distribuição
+# Build and distribution
 build/
 dist/
 *.egg-info/
 *.egg
 
-# Caches Python
+# Python caches
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 
-# Cobertura de testes
+# Coverage
 .coverage
 coverage.xml
 htmlcov/
 
-# Artefatos de testes locais
+# Local test artifacts
 tests/artefatos_testes/
 
-# Ferramentas de IA para desenvolvimento (instruções internas, não fazem parte da biblioteca)
+# AI development tooling (internal, not part of the library)
 .claude/
+.codex/
 .codex
 CLAUDE.md
 AGENTS.md
+PROJECT_CONTEXT.md
+instrucoues_criar_api.txt
 
-# Metadados de sistema operacional
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Operating system
 .DS_Store
 Thumbs.db

@@ -1,297 +1,157 @@
-"""Public image generation, transformation, and editing helpers."""
+"""Image dispatcher.
+
+Exposes :func:`generate`, :func:`edit`, :func:`remix`, and :func:`analyze` as
+the unified entrypoints for every supported provider. The provider is selected
+via the ``api`` keyword argument and must match the file name (without ``.py``)
+of an internal provider module.
+
+Last updated: 2026-04-25
+"""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
-from .._core.aliases import normalizar_api
-from .._core.credentials import CredentialStore
-from .._core.public_api import coerce_request
-from .._core.schemas import (
-    ComporImagemRequest as InternalImageCompositionRequest,
-)
-from .._core.schemas import (
-    EditarImagemRequest as InternalImageEditRequest,
-)
-from .._core.schemas import (
-    TextoImagemParaImagemRequest as InternalImageTransformationRequest,
-)
-from .._core.schemas import (
-    TextoParaImagemRequest as InternalImageGenerationRequest,
-)
-from ..models import (
-    ImageCompositionRequest,
-    ImageEditRequest,
-    ImageGenerationRequest,
-    ImageResult,
-    ImageTransformationRequest,
-)
-from .providers import ImageRegistries, build_image_registries
-
-
-def _registries(credentials: Mapping[str, str] | CredentialStore | None) -> ImageRegistries:
-    return build_image_registries(credentials)
-
-
-def generate(
-    request: ImageGenerationRequest | None = None,
-    /,
-    *,
-    credentials: Mapping[str, str] | None = None,
-    **kwargs: object,
-) -> ImageResult:
-    """Generate an image from a text prompt."""
-
-    request = coerce_request(request, ImageGenerationRequest, kwargs)
-    provider = normalizar_api(request.provider)
-    adapter = _registries(credentials).generate[provider]
-    internal = InternalImageGenerationRequest(
-        prompt=request.prompt,
-        negative_prompt=request.negative_prompt,
-        modelo=request.model,
-        largura=request.width,
-        altura=request.height,
-        seed=request.seed,
-        timeout_segundos=request.timeout_seconds,
-        max_tentativas=request.max_retries,
-        parametros_provider=request.provider_params,
-    )
-    image_base64 = adapter.gerar(internal)
-    return ImageResult(
-        image_base64=image_base64,
-        metadata={"provider": provider, "model": adapter.resolve_model(internal.modelo)},
-    )
-
-
-async def generate_async(
-    request: ImageGenerationRequest | None = None,
-    /,
-    *,
-    credentials: Mapping[str, str] | None = None,
-    **kwargs: object,
-) -> ImageResult:
-    """Async variant of :func:`generate`."""
-
-    request = coerce_request(request, ImageGenerationRequest, kwargs)
-    provider = normalizar_api(request.provider)
-    adapter = _registries(credentials).generate[provider]
-    internal = InternalImageGenerationRequest(
-        prompt=request.prompt,
-        negative_prompt=request.negative_prompt,
-        modelo=request.model,
-        largura=request.width,
-        altura=request.height,
-        seed=request.seed,
-        timeout_segundos=request.timeout_seconds,
-        max_tentativas=request.max_retries,
-        parametros_provider=request.provider_params,
-    )
-    image_base64 = await adapter.gerar_async(internal)
-    return ImageResult(
-        image_base64=image_base64,
-        metadata={"provider": provider, "model": adapter.resolve_model(internal.modelo)},
-    )
-
-
-def transform(
-    request: ImageTransformationRequest | None = None,
-    /,
-    *,
-    credentials: Mapping[str, str] | None = None,
-    **kwargs: object,
-) -> ImageResult:
-    """Generate a new image using a prompt plus an input image."""
-
-    request = coerce_request(request, ImageTransformationRequest, kwargs)
-    provider = normalizar_api(request.provider)
-    adapter = _registries(credentials).transform[provider]
-    internal = InternalImageTransformationRequest(
-        prompt=request.prompt,
-        imagem=request.image,
-        negative_prompt=request.negative_prompt,
-        modelo=request.model,
-        intensidade=request.strength,
-        seed=request.seed,
-        timeout_segundos=request.timeout_seconds,
-        max_tentativas=request.max_retries,
-        parametros_provider=request.provider_params,
-    )
-    image_base64 = adapter.gerar(internal)
-    return ImageResult(
-        image_base64=image_base64,
-        metadata={"provider": provider, "model": adapter.resolve_model(internal.modelo)},
-    )
-
-
-async def transform_async(
-    request: ImageTransformationRequest | None = None,
-    /,
-    *,
-    credentials: Mapping[str, str] | None = None,
-    **kwargs: object,
-) -> ImageResult:
-    """Async variant of :func:`transform`."""
-
-    request = coerce_request(request, ImageTransformationRequest, kwargs)
-    provider = normalizar_api(request.provider)
-    adapter = _registries(credentials).transform[provider]
-    internal = InternalImageTransformationRequest(
-        prompt=request.prompt,
-        imagem=request.image,
-        negative_prompt=request.negative_prompt,
-        modelo=request.model,
-        intensidade=request.strength,
-        seed=request.seed,
-        timeout_segundos=request.timeout_seconds,
-        max_tentativas=request.max_retries,
-        parametros_provider=request.provider_params,
-    )
-    image_base64 = await adapter.gerar_async(internal)
-    return ImageResult(
-        image_base64=image_base64,
-        metadata={"provider": provider, "model": adapter.resolve_model(internal.modelo)},
-    )
-
-
-def compose(
-    request: ImageCompositionRequest | None = None,
-    /,
-    *,
-    credentials: Mapping[str, str] | None = None,
-    **kwargs: object,
-) -> ImageResult:
-    """Compose a new image from a base image, a reference image and a prompt."""
-
-    request = coerce_request(request, ImageCompositionRequest, kwargs)
-    provider = normalizar_api(request.provider)
-    adapter = _registries(credentials).compose[provider]
-    internal = InternalImageCompositionRequest(
-        prompt=request.prompt,
-        imagem=request.image,
-        imagem_referencia=request.reference_image,
-        negative_prompt=request.negative_prompt,
-        modelo=request.model,
-        intensidade=request.strength,
-        seed=request.seed,
-        timeout_segundos=request.timeout_seconds,
-        max_tentativas=request.max_retries,
-        parametros_provider=request.provider_params,
-    )
-    image_base64 = adapter.gerar(internal)
-    return ImageResult(
-        image_base64=image_base64,
-        metadata={"provider": provider, "model": adapter.resolve_model(internal.modelo)},
-    )
-
-
-async def compose_async(
-    request: ImageCompositionRequest | None = None,
-    /,
-    *,
-    credentials: Mapping[str, str] | None = None,
-    **kwargs: object,
-) -> ImageResult:
-    """Async variant of :func:`compose`."""
-
-    request = coerce_request(request, ImageCompositionRequest, kwargs)
-    provider = normalizar_api(request.provider)
-    adapter = _registries(credentials).compose[provider]
-    internal = InternalImageCompositionRequest(
-        prompt=request.prompt,
-        imagem=request.image,
-        imagem_referencia=request.reference_image,
-        negative_prompt=request.negative_prompt,
-        modelo=request.model,
-        intensidade=request.strength,
-        seed=request.seed,
-        timeout_segundos=request.timeout_seconds,
-        max_tentativas=request.max_retries,
-        parametros_provider=request.provider_params,
-    )
-    image_base64 = await adapter.gerar_async(internal)
-    return ImageResult(
-        image_base64=image_base64,
-        metadata={"provider": provider, "model": adapter.resolve_model(internal.modelo)},
-    )
-
-
-def edit(
-    request: ImageEditRequest | None = None,
-    /,
-    *,
-    credentials: Mapping[str, str] | None = None,
-    **kwargs: object,
-) -> ImageResult:
-    """Edit an image with an optional mask."""
-
-    request = coerce_request(request, ImageEditRequest, kwargs)
-    provider = normalizar_api(request.provider)
-    registries = _registries(credentials)
-    adapter = (
-        registries.edit_with_mask[provider]
-        if request.mask is not None
-        else registries.edit_without_mask[provider]
-    )
-    internal = InternalImageEditRequest(
-        prompt=request.prompt,
-        imagem=request.image,
-        mascara=request.mask,
-        negative_prompt=request.negative_prompt,
-        modelo=request.model,
-        seed=request.seed,
-        timeout_segundos=request.timeout_seconds,
-        max_tentativas=request.max_retries,
-        parametros_provider=request.provider_params,
-    )
-    image_base64 = adapter.gerar(internal)
-    return ImageResult(
-        image_base64=image_base64,
-        metadata={"provider": provider, "model": adapter.resolve_model(internal.modelo)},
-    )
-
-
-async def edit_async(
-    request: ImageEditRequest | None = None,
-    /,
-    *,
-    credentials: Mapping[str, str] | None = None,
-    **kwargs: object,
-) -> ImageResult:
-    """Async variant of :func:`edit`."""
-
-    request = coerce_request(request, ImageEditRequest, kwargs)
-    provider = normalizar_api(request.provider)
-    registries = _registries(credentials)
-    adapter = (
-        registries.edit_with_mask[provider]
-        if request.mask is not None
-        else registries.edit_without_mask[provider]
-    )
-    internal = InternalImageEditRequest(
-        prompt=request.prompt,
-        imagem=request.image,
-        mascara=request.mask,
-        negative_prompt=request.negative_prompt,
-        modelo=request.model,
-        seed=request.seed,
-        timeout_segundos=request.timeout_seconds,
-        max_tentativas=request.max_retries,
-        parametros_provider=request.provider_params,
-    )
-    image_base64 = await adapter.gerar_async(internal)
-    return ImageResult(
-        image_base64=image_base64,
-        metadata={"provider": provider, "model": adapter.resolve_model(internal.modelo)},
-    )
-
+import importlib
+from typing import Any
 
 __all__ = [
-    "compose",
-    "compose_async",
-    "edit",
-    "edit_async",
     "generate",
-    "generate_async",
-    "transform",
-    "transform_async",
+    "edit",
+    "remix",
+    "analyze",
+    "update_cost",
+    "available_generate_apis",
+    "available_edit_apis",
+    "available_remix_apis",
+    "available_analyze_apis",
 ]
+
+
+_GENERATE_APIS = (
+    "bfl",
+    "falai",
+    "fireworks",
+    "google",
+    "openai",
+    "openrouter",
+    "stability",
+    "together",
+    "xai",
+)
+
+_EDIT_APIS = _GENERATE_APIS
+
+_REMIX_APIS = _GENERATE_APIS
+
+_ANALYZE_APIS = (
+    "anthropic",
+    "falai",
+    "fireworks",
+    "google",
+    "groq",
+    "openai",
+    "openrouter",
+    "together",
+    "xai",
+)
+
+
+def available_generate_apis():
+    """Return the tuple of supported generate provider identifiers."""
+
+    return _GENERATE_APIS
+
+
+def available_edit_apis():
+    """Return the tuple of supported edit provider identifiers."""
+
+    return _EDIT_APIS
+
+
+def available_remix_apis():
+    """Return the tuple of supported remix provider identifiers."""
+
+    return _REMIX_APIS
+
+
+def available_analyze_apis():
+    """Return the tuple of supported analyze provider identifiers."""
+
+    return _ANALYZE_APIS
+
+
+def _load_module(operation, api, allowed):
+    if not isinstance(api, str) or not api:
+        raise ValueError(
+            f"image.{operation}(...) requires the keyword argument 'api'. "
+            f"Available APIs: {', '.join(allowed)}."
+        )
+    if api not in allowed:
+        raise ValueError(
+            f"Unknown image {operation} API '{api}'. Available APIs: "
+            f"{', '.join(allowed)}."
+        )
+    return importlib.import_module(f"._{operation}._apis.{api}", __name__)
+
+
+def generate(prompt, model=None, *, api, **kwargs):
+    """Generate one image from a prompt with the selected provider.
+
+    Returns the normalized contract: `cust_usd`, `base64`, `warnings`,
+    `request_id`. Provider-native options can be passed through ``**kwargs``.
+    """
+
+    module = _load_module("generate", api, _GENERATE_APIS)
+    if model is None:
+        return module.generate(prompt, **kwargs)
+    return module.generate(prompt, model=model, **kwargs)
+
+
+def edit(prompt, image, model=None, *, api, **kwargs):
+    """Edit one image guided by a prompt and optional mask."""
+
+    module = _load_module("edit", api, _EDIT_APIS)
+    if model is None:
+        return module.edit(prompt, image, **kwargs)
+    return module.edit(prompt, image, model=model, **kwargs)
+
+
+def remix(prompt, reference_images, model=None, *, api, **kwargs):
+    """Remix one prompt with reference images using the selected provider."""
+
+    module = _load_module("remix", api, _REMIX_APIS)
+    arguments: dict[str, Any] = dict(kwargs)
+    if model is not None:
+        arguments["model"] = model
+    return module.remix(prompt, reference_images, **arguments)
+
+
+def analyze(prompt, image, model=None, *, api, **kwargs):
+    """Run vision/multimodal analysis with the selected provider."""
+
+    module = _load_module("analyze", api, _ANALYZE_APIS)
+    if model is None:
+        return module.analyze(prompt, image, **kwargs)
+    return module.analyze(prompt, image, model=model, **kwargs)
+
+
+def update_cost(operation, result, *, api):
+    """Refresh `cust_usd` / `cost_usd` from a provider that supports lookups."""
+
+    operation = str(operation or "").strip()
+    allowed = {
+        "generate": _GENERATE_APIS,
+        "edit": _EDIT_APIS,
+        "remix": _REMIX_APIS,
+        "analyze": _ANALYZE_APIS,
+    }
+    if operation not in allowed:
+        raise ValueError(
+            "image.update_cost(...) operation must be one of: "
+            f"{', '.join(sorted(allowed))}."
+        )
+    module = _load_module(operation, api, allowed[operation])
+    if not hasattr(module, "update_cost"):
+        raise NotImplementedError(
+            f"image.update_cost is not implemented for {operation} api='{api}'."
+        )
+    return module.update_cost(result)

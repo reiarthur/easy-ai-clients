@@ -1,37 +1,37 @@
 # Contributing to easy-ai-clients
 
-## Development setup
+Thank you for considering a contribution! This document describes the local
+development workflow and the release process.
 
-Clone the repository and install the package in editable mode with all development dependencies:
+## Development setup
 
 ```bash
 git clone https://github.com/reiarthur/easy-ai-clients.git
 cd easy-ai-clients
+python -m venv .venv
+.venv/Scripts/activate  # PowerShell: .venv\Scripts\Activate.ps1; Linux/macOS: source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-The `[dev]` extra installs:
-
-| Tool | Purpose |
-|---|---|
-| `build` | Build the source distribution and wheel |
-| `pytest` | Test runner |
-| `pytest-asyncio` | Async test support |
-| `ruff` | Linting and import sorting |
-| `twine` | Upload to PyPI |
+Set the environment variables of the providers you intend to exercise (only
+those you actually need). See [`.env.example`](.env.example) for the
+recognised names. The library does not auto-load `.env`; use
+[`python-dotenv`](https://pypi.org/project/python-dotenv/) or your own loader
+if you want to source a file.
 
 ## Running tests
+
+The bundled test suite focuses on package-level invariants (imports,
+dispatcher routing, parameter validation). It does not call paid APIs.
 
 ```bash
 pytest
 ```
 
-All async tests run automatically. The test suite uses fake adapters — no real API credentials are needed.
-
-To run a single test file:
+To run a specific file:
 
 ```bash
-pytest tests/test_text_api.py -v
+pytest tests/test_imports.py -v
 ```
 
 ## Linting
@@ -50,88 +50,65 @@ ruff check --fix src tests
 
 ```
 src/easy_ai_clients/
-├── __init__.py          # Public exports (exceptions, models, EasyAiClient client)
-├── client.py            # Stateful EasyAiClient client
-├── exceptions.py        # Public re-exports of typed exceptions
-├── models.py            # Pydantic v2 request and result models
-├── text/                # Text generation helpers and provider adapters
-├── audio/               # Transcription, synthesis, and music helpers and adapters
-├── image/               # Image generation, transform, compose and edit helpers and adapters
-├── video/               # Video generation and lip-sync helpers and adapters
-└── _core/               # Internal utilities (HTTP, retry, polling, credentials, schemas)
-    └── schemas/         # Internal Pydantic schemas used by the provider layer
+├── __init__.py            # Top-level package: re-exports text, audio, image, __version__
+├── py.typed
+├── text/
+│   ├── __init__.py        # Text generate dispatcher
+│   ├── pre_processing.py  # Shared HTTP and env helpers
+│   ├── post_processing.py # Output extraction and cost helpers
+│   └── _apis/             # PRIVATE provider modules (one file per provider)
+├── audio/
+│   ├── __init__.py        # Audio generate / transcribe dispatchers
+│   ├── _synthesize/...    # PRIVATE TTS providers
+│   └── _transcribe/...    # PRIVATE STT providers
+└── image/
+    ├── __init__.py        # Image generate / edit / remix / analyze dispatchers
+    ├── _common/           # PRIVATE shared image helpers (HTTP, cost, mask, etc.)
+    ├── _generate/...      # PRIVATE image generation providers
+    ├── _edit/...
+    ├── _remix/...
+    └── _analyze/...
 ```
 
-The `_core` package is internal. Only import from the public modules (`easy_ai_clients`, `easy_ai_clients.text`, `easy_ai_clients.audio`, `easy_ai_clients.image`, `easy_ai_clients.video`, `easy_ai_clients.exceptions`, `easy_ai_clients.models`).
+Anything starting with `_` is internal. The only stable surface is what is
+explicitly exported from `easy_ai_clients.text`, `easy_ai_clients.audio`, and
+`easy_ai_clients.image`.
 
 ## Adding a new provider
 
-1. Add a `ProviderSpec` entry in `src/easy_ai_clients/_core/provider_catalog.py` with the modality, operation, provider name, and required env vars.
-2. Implement the adapter class in the relevant `providers/` directory (e.g., `src/easy_ai_clients/text/providers/`).
-3. Register the adapter in the registry builder (`build_text_registry`, `build_audio_registries`, etc.).
-4. Add the provider to the alias table in `src/easy_ai_clients/_core/aliases.py` if it has common aliases.
-5. Add the provider env var to `.env.example`.
-6. Update `docs/providers.md` and `README.md` with the new entry.
-7. Add a test in `tests/` verifying the adapter is reachable through the public API.
-8. Document the change in `CHANGELOG.md` under an `[Unreleased]` section.
+1. Pick a short, lowercase identifier matching the file name (e.g. `groq`).
+2. Drop the new module under the appropriate `_apis/` directory and expose a
+   public function with the operation's standard signature
+   (`generate`, `edit`, `remix`, `analyze`, or `transcribe`).
+3. Register the new identifier in the dispatcher's tuple inside the operation
+   `__init__.py` (e.g. `_AVAILABLE_APIS` for `text`, `_GENERATE_APIS` for
+   `image.generate`).
+4. Add the credential variable to `.env.example` and document the provider in
+   [`docs/providers.md`](docs/providers.md).
+5. Update `CHANGELOG.md` under a new `[Unreleased]` section.
 
 ## Building the package
 
 ```bash
 python -m build
-```
-
-This generates two files in `dist/`:
-- `easy_ai_clients-X.Y.Z.tar.gz` — source distribution
-- `easy_ai_clients-X.Y.Z-py3-none-any.whl` — universal wheel
-
-Validate the package metadata before uploading:
-
-```bash
 twine check dist/*
 ```
 
-Both checks must pass (`PASSED`) before proceeding.
+Both must pass before publishing.
 
 ## Publishing to PyPI
 
-### TestPyPI (recommended first step)
-
-Test the upload flow without publishing to the production index:
-
 ```bash
-twine upload --repository testpypi dist/*
+python -m build
+TWINE_USERNAME=__token__ TWINE_PASSWORD=pypi-... twine upload dist/*
 ```
 
-You will be prompted for your TestPyPI credentials. After uploading, install from TestPyPI to verify the package works:
-
-```bash
-pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ easy-ai-clients
-```
-
-### PyPI (production)
-
-```bash
-twine upload dist/*
-```
-
-You will be prompted for your PyPI username and password (or API token). Use an API token instead of a password:
-
-1. Go to [pypi.org/manage/account/token/](https://pypi.org/manage/account/token/)
-2. Create a token scoped to the `easy-ai-clients` project.
-3. Use `__token__` as the username and the token string as the password, or store them in `~/.pypirc`:
-
-```ini
-[pypi]
-username = __token__
-password = pypi-...
-```
+The token must be scoped to the `easy-ai-clients` project. After uploading,
+verify the new release at `https://pypi.org/project/easy-ai-clients/<version>/`.
 
 ### Bumping the version
 
-The version is defined in two places — update both together:
+Update the version in two places and add a `CHANGELOG.md` entry:
 
 1. `pyproject.toml` — `version = "X.Y.Z"`
-2. `src/easy_ai_clients/_core/config.py` — `VERSION = "X.Y.Z"`
-
-After bumping, add a new section to `CHANGELOG.md` documenting the changes.
+2. `src/easy_ai_clients/__init__.py` — `__version__ = "X.Y.Z"`

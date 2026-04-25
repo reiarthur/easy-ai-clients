@@ -1,144 +1,116 @@
-# Provider Credentials
+# Providers
 
-The tables below describe the public provider matrix and the environment variables each provider requires.
+This page is the entry point for the per-provider documentation pages. It
+mirrors the operation tree of the public API and lists which environment
+variable each provider needs.
 
-## Text generation
+The detailed per-provider notes (default models, accepted parameters,
+pricing, validation status, known limitations) live alongside this file in
+`docs/<modality>/<operation>/<provider>.md`.
 
-| Provider | Env vars |
-| --- | --- |
-| `openai` | `OPENAI_API_KEY` |
-| `groq` | `GROQ_API_KEY` |
-| `together` | `TOGETHER_API_KEY` |
-| `fireworks` | `FIREWORKS_API_KEY` |
-| `deepseek` | `DEEPSEEK_API_KEY` |
-| `openrouter` | `OPENROUTER_API_KEY` |
-| `xai` | `XAI_API_KEY` |
-| `mistral` | `MISTRAL_API_KEY` |
-| `anthropic` | `ANTHROPIC_API_KEY` |
-| `google` | `GOOGLE_API_KEY` |
-| `cohere` | `COHERE_API_KEY` |
-| `perplexity` | `PERPLEXITY_API_KEY` |
-| `deepinfra` | `DEEPINFRA_API_KEY` |
-| `huggingface` | `HUGGINGFACE_API_KEY` |
+## Text — `easy_ai_clients.text`
 
-### Text generation — supported model IDs (as of 0.3.0)
-
-The text providers below were audited against official documentation in April 2026. The `default_model` is used when no `model` is explicitly passed to `generate(...)`.
-
-| Provider | Default model | Other supported IDs |
+| API | Env var | Notes |
 | --- | --- | --- |
-| `openai` | `gpt-5-mini` | — |
-| `groq` | `openai/gpt-oss-20b` | — |
-| `together` | `openai/gpt-oss-20b` | — |
-| `fireworks` | `openai/gpt-oss-20b` | — |
-| `deepseek` | `deepseek-chat` | `deepseek-reasoner` |
-| `openrouter` | `openai/gpt-oss-20b` | — |
-| `xai` | `grok-4-1-fast-reasoning` | — |
-| `mistral` | `mistral-medium-3-2508` | — |
-| `anthropic` | `claude-opus-4-7` | `claude-sonnet-4-6`, `claude-haiku-4-5`, `claude-sonnet-4-5` |
-| `google` | `gemini-2.5-flash` | `gemini-2.5-flash-lite` |
-| `cohere` | `command-a-03-2025` | — |
-| `perplexity` | `sonar-pro` | `sonar`, `sonar-reasoning-pro`, `sonar-deep-research` |
-| `deepinfra` | `openai/gpt-oss-20b` | — |
-| `huggingface` | `meta-llama/Llama-3.1-8B-Instruct` | — |
+| [`anthropic`](text/anthropic.md) | `ANTHROPIC_API_KEY` | Messages API. |
+| [`cohere`](text/cohere.md) | `COHERE_API_KEY` | Chat v2. |
+| [`deepinfra`](text/deepinfra.md) | `DEEPINFRA_API_KEY` | OpenAI-compatible. |
+| [`deepseek`](text/deepseek.md) | `DEEPSEEK_API_KEY` | DeepSeek chat with reasoning. |
+| [`fal`](text/fal.md) | `FAL_KEY`; catalog uses `OPENROUTER_API_KEY` | fal LLM gateway. |
+| [`fireworks`](text/fireworks.md) | `FIREWORKS_API_KEY` | Reasoning + speculation kwargs. |
+| [`google`](text/google.md) | `GOOGLE_API_KEY` | Gemini `generateContent`. |
+| [`groq`](text/groq.md) | `GROQ_API_KEY` | OpenAI-compatible chat. |
+| [`huggingface`](text/huggingface.md) | `HUGGINGFACE_API_KEY` | Router / serverless inference. |
+| [`mistral`](text/mistral.md) | `MISTRAL_API_KEY` | Chat completions. |
+| [`openai`](text/openai.md) | `OPENAI_API_KEY` | Responses API + cost lookup. |
+| [`openrouter`](text/openrouter.md) | `OPENROUTER_API_KEY` | Aggregator with `update_cost`. |
+| [`together`](text/together.md) | `TOGETHER_API_KEY` | Chat completions + reasoning. |
+| [`xai`](text/xai.md) | `XAI_API_KEY` | Grok chat. |
 
-> Providers not listed in the "Other supported IDs" column above expose only the default model in 0.3.0. Audio, image and video model IDs are not re-audited in 0.3.0 — see the CHANGELOG for scope details.
+## Audio — `easy_ai_clients.audio`
 
-## Audio
+### `audio.generate(...)` (text-to-speech)
 
-### Transcription
+| API | Env var | Notes |
+| --- | --- | --- |
+| [`deepinfra`](audio/generate/deepinfra.md) | `DEEPINFRA_API_KEY` | Multiple Kokoro/Sesame voices. |
+| [`elevenlabs`](audio/generate/elevenlabs.md) | `ELEVENLABS_API_KEY` | Native word/character timings. |
+| [`google`](audio/generate/google.md) | `GOOGLE_API_KEY` | Gemini speech. |
+| [`mistral`](audio/generate/mistral.md) | `MISTRAL_API_KEY` | Voxtral / Le Chat speech. |
+| [`openai`](audio/generate/openai.md) | `OPENAI_API_KEY` | `gpt-4o-mini-tts` + `tts-1`. |
+| [`together`](audio/generate/together.md) | `TOGETHER_API_KEY` | OpenAI-compatible TTS. |
+| [`xai`](audio/generate/xai.md) | `XAI_API_KEY` | Grok speech. |
 
-| Provider | Env vars |
-| --- | --- |
-| `deepgram` | `DEEPGRAM_API_KEY` |
-| `assemblyai` | `ASSEMBLYAI_API_KEY` |
-| `speechmatics` | `SPEECHMATICS_API_KEY` |
-| `revai` | `REVAI_API_KEY` |
+### `audio.transcribe(...)` (speech-to-text)
 
-### Speech synthesis
+| API | Env var | Notes |
+| --- | --- | --- |
+| [`deepgram`](audio/transcribe/deepgram.md) | `DEEPGRAM_API_KEY` (+ optional `DEEPGRAM_PROJECT_ID`) | Nova / Whisper. |
+| [`elevenlabs`](audio/transcribe/elevenlabs.md) | `ELEVENLABS_API_KEY` | Scribe v1/v2 with diarization. |
+| [`falai`](audio/transcribe/falai.md) | `FAL_KEY` | Routes to ElevenLabs Scribe via fal. |
+| [`fireworks`](audio/transcribe/fireworks.md) | `FIREWORKS_API_KEY` | Whisper-v3-turbo. |
+| [`revai`](audio/transcribe/revai.md) | `REVAI_API_KEY` | Async job + diarization. |
+| [`speechmatics`](audio/transcribe/speechmatics.md) | `SPEECHMATICS_API_KEY` | Standard / enhanced. |
+| [`together`](audio/transcribe/together.md) | `TOGETHER_API_KEY` | Whisper-large-v3. |
 
-| Provider | Env vars |
-| --- | --- |
-| `cartesia` | `CARTESIA_API_KEY` |
-| `azure` | `AZURE_SPEECH_API_KEY`, `AZURE_SPEECH_REGION` |
-| `hume` | `HUME_API_KEY` |
-| `elevenlabs` | `ELEVENLABS_API_KEY` |
-| `murf` | `MURF_API_KEY` |
+## Image — `easy_ai_clients.image`
 
-### Music generation
+### `image.generate(...)` (text-to-image)
 
-| Provider | Env vars |
-| --- | --- |
-| `google` | `GOOGLE_API_KEY` |
-| `elevenlabs` | `ELEVENLABS_API_KEY` |
-| `stability` | `STABILITY_API_KEY` |
-| `beatoven` | `BEATOVEN_API_KEY` |
-| `loudly` | `LOUDLY_API_KEY` |
+| API | Env var | Doc |
+| --- | --- | --- |
+| `bfl` | `BFL_API_KEY` | [`bfl`](image/generate/bfl.md) |
+| `falai` | `FAL_KEY` | [`falai`](image/generate/falai.md) |
+| `fireworks` | `FIREWORKS_API_KEY` | [`fireworks`](image/generate/fireworks.md) |
+| `google` | `GOOGLE_API_KEY` | [`google`](image/generate/google.md) |
+| `openai` | `OPENAI_API_KEY` | [`openai`](image/generate/openai.md) |
+| `openrouter` | `OPENROUTER_API_KEY` | [`openrouter`](image/generate/openrouter.md) |
+| `stability` | `STABILITY_API_KEY` | [`stability`](image/generate/stability.md) |
+| `together` | `TOGETHER_API_KEY` | [`together`](image/generate/together.md) |
+| `xai` | `XAI_API_KEY` | [`xai`](image/generate/xai.md) |
 
-## Image
+### `image.edit(...)` (prompt + mask editing)
 
-### Generate
+| API | Env var | Doc |
+| --- | --- | --- |
+| `bfl` | `BFL_API_KEY` | [`bfl`](image/edit/bfl.md) |
+| `falai` | `FAL_KEY` | [`falai`](image/edit/falai.md) |
+| `fireworks` | `FIREWORKS_API_KEY` | [`fireworks`](image/edit/fireworks.md) |
+| `google` | `GOOGLE_API_KEY` | [`google`](image/edit/google.md) |
+| `openai` | `OPENAI_API_KEY` | [`openai`](image/edit/openai.md) |
+| `openrouter` | `OPENROUTER_API_KEY` | [`openrouter`](image/edit/openrouter.md) |
+| `stability` | `STABILITY_API_KEY` | [`stability`](image/edit/stability.md) |
+| `together` | `TOGETHER_API_KEY` | [`together`](image/edit/together.md) |
+| `xai` | `XAI_API_KEY` | [`xai`](image/edit/xai.md) |
 
-| Provider | Env vars |
-| --- | --- |
-| `openai` | `OPENAI_API_KEY` |
-| `google` | `GOOGLE_API_KEY` |
-| `bfl` | `BFL_API_KEY` |
-| `ideogram` | `IDEOGRAM_API_KEY` |
-| `stability` | `STABILITY_API_KEY` |
-| `hedra` | `HEDRA_API_KEY` |
+For `edit`, the public mask convention is **black = editable, white =
+preserve**. Each provider adapter converts that contract to whatever the
+underlying API expects.
 
-### Transform
+### `image.remix(...)` (reference-image guided)
 
-| Provider | Env vars |
-| --- | --- |
-| `openai` | `OPENAI_API_KEY` |
-| `google` | `GOOGLE_API_KEY` |
-| `bfl` | `BFL_API_KEY` |
-| `ideogram` | `IDEOGRAM_API_KEY` |
-| `stability` | `STABILITY_API_KEY` |
+| API | Env var | Doc |
+| --- | --- | --- |
+| `bfl` | `BFL_API_KEY` | [`bfl`](image/remix/bfl.md) |
+| `falai` | `FAL_KEY` | [`falai`](image/remix/falai.md) |
+| `fireworks` | `FIREWORKS_API_KEY` | [`fireworks`](image/remix/fireworks.md) |
+| `google` | `GOOGLE_API_KEY` | [`google`](image/remix/google.md) |
+| `openai` | `OPENAI_API_KEY` | [`openai`](image/remix/openai.md) |
+| `openrouter` | `OPENROUTER_API_KEY` | [`openrouter`](image/remix/openrouter.md) |
+| `stability` | `STABILITY_API_KEY` | [`stability`](image/remix/stability.md) |
+| `together` | `TOGETHER_API_KEY` | [`together`](image/remix/together.md) |
+| `xai` | `XAI_API_KEY` | [`xai`](image/remix/xai.md) |
 
-### Compose
+### `image.analyze(...)` (vision)
 
-| Provider | Env vars |
-| --- | --- |
-| `google` | `GOOGLE_API_KEY` |
-| `bfl` | `BFL_API_KEY` |
-
-### Edit
-
-| Provider | Env vars |
-| --- | --- |
-| `openai` | `OPENAI_API_KEY` |
-| `google` | `GOOGLE_API_KEY` |
-| `bfl` | `BFL_API_KEY` |
-| `ideogram` | `IDEOGRAM_API_KEY` |
-| `stability` | `STABILITY_API_KEY` |
-
-## Video
-
-### Generate without audio
-
-| Provider | Env vars |
-| --- | --- |
-| `runway` | `RUNWAYML_API_SECRET` |
-| `luma` | `LUMA_API_KEY` |
-| `fal` | `FAL_KEY` |
-| `hedra` | `HEDRA_API_KEY` |
-
-### Generate with audio
-
-| Provider | Env vars |
-| --- | --- |
-| `google` | `GOOGLE_API_KEY` |
-| `heygen` | `HEYGEN_API_KEY` |
-| `did` | `DID_API_KEY` |
-| `hedra` | `HEDRA_API_KEY` |
-
-### Lip sync
-
-| Provider | Env vars |
-| --- | --- |
-| `heygen` | `HEYGEN_API_KEY` |
-| `did` | `DID_API_KEY` |
-| `hedra` | `HEDRA_API_KEY` |
+| API | Env var | Doc |
+| --- | --- | --- |
+| `anthropic` | `ANTHROPIC_API_KEY` | [`anthropic`](image/analyze/anthropic.md) |
+| `falai` | `FAL_KEY` | [`falai`](image/analyze/falai.md) |
+| `fireworks` | `FIREWORKS_API_KEY` | [`fireworks`](image/analyze/fireworks.md) |
+| `google` | `GOOGLE_API_KEY` | [`google`](image/analyze/google.md) |
+| `groq` | `GROQ_API_KEY` | [`groq`](image/analyze/groq.md) |
+| `openai` | `OPENAI_API_KEY` | [`openai`](image/analyze/openai.md) |
+| `openrouter` | `OPENROUTER_API_KEY` | [`openrouter`](image/analyze/openrouter.md) |
+| `together` | `TOGETHER_API_KEY` | [`together`](image/analyze/together.md) |
+| `xai` | `XAI_API_KEY` | [`xai`](image/analyze/xai.md) |

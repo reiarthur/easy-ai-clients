@@ -4,56 +4,78 @@ build-backend = "hatchling.build"
 
 [project]
 name = "easy-ai-clients"
-version = "0.3.0"
-description = "Unified multimodal multi-provider Python toolkit for text, audio, image, and video generation."
+version = "0.4.0"
+description = "Unified multi-provider Python client for text, image, and audio AI APIs."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [
-  { name = "King Arthur", email = "arthur@sart.dev" }
+  { name = "Arthur", email = "arthur@sart.dev" }
 ]
 keywords = [
   "ai",
   "llm",
+  "text-generation",
   "tts",
   "stt",
+  "speech-to-text",
+  "text-to-speech",
   "vision",
   "image-generation",
-  "video-generation",
+  "image-editing",
   "multimodal",
   "openai",
   "anthropic",
+  "claude",
+  "google",
   "gemini",
-  "fal",
-  "replicate",
+  "elevenlabs",
+  "deepgram",
+  "mistral",
+  "groq",
+  "fireworks",
+  "together",
+  "deepinfra",
+  "deepseek",
   "huggingface",
   "openrouter",
-  "together",
-  "fireworks",
-  "deepinfra",
-  "edenai",
+  "fal",
+  "stability",
+  "black-forest-labs",
+  "rev-ai",
+  "speechmatics",
+  "xai",
+  "cohere",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+  "Topic :: Multimedia :: Graphics",
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+  "requests>=2.32,<3",
   "httpx>=0.28,<1",
-  "pydantic>=2.10,<3",
-  "Pillow>=11,<13",
+  "Pillow>=10,<13",
+  "pydub>=0.25,<1",
+  "imageio-ffmpeg>=0.5,<1",
+  "python-dotenv>=1,<2",
+  "audioop-lts>=0.2; python_version >= '3.13'",
 ]
 
 [project.optional-dependencies]
 dev = [
   "build>=1.2",
   "pytest>=8.3",
-  "pytest-asyncio>=0.24",
   "ruff>=0.11",
   "twine>=6.1",
 ]
@@ -73,6 +95,8 @@ include = [
   "/docs",
   "/tests",
   "/README.md",
+  "/CHANGELOG.md",
+  "/CONTRIBUTING.md",
   "/LICENSE",
   "/pyproject.toml",
 ]
@@ -80,10 +104,9 @@ include = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]

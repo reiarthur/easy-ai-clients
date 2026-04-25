@@ -1,122 +1,77 @@
-# Error Handling and Troubleshooting
+# Error handling
 
-`easy-ai-clients` uses typed exceptions so application code can handle failures intentionally. All exceptions inherit from `EasyAiClientError`.
+`easy-ai-clients` keeps the error model simple and predictable: it reuses
+standard Python exceptions instead of introducing a parallel hierarchy.
+Errors are raised eagerly whenever possible — typically before a network
+request is sent — so misconfigurations surface fast.
 
-## Exception hierarchy
+## Exception types
 
-```
-EasyAiClientError
-├── ConfigurationError
-│   └── MissingCredentialError
-├── UnsupportedProviderError
-├── UnsupportedModelError
-├── InvalidParameterError
-├── IncompatibleParameterError
-├── PricingUnavailableError
-├── ProviderTimeoutError
-├── JobFailedError
-├── TemporaryDownloadError
-└── InvalidProviderResponseError
-```
+| Exception | When |
+| --- | --- |
+| `ValueError` | Invalid `api` selector, unsupported parameter, invalid choice for an enumerated parameter, invalid numeric range, or unsupported model identifier. |
+| `TypeError` | Unsupported keyword argument forwarded to a provider that explicitly rejects unknown kwargs. |
+| `EnvironmentError` / `RuntimeError` | Missing or empty environment variable for the selected provider's credential. |
+| `requests.HTTPError` / `httpx.HTTPStatusError` | Provider responded with a non-success HTTP status. The body is included in the error message (truncated) for fast triage. |
+| `requests.ConnectionError` / `requests.Timeout` | Transient network failure after exhausted retries. |
+| `NotImplementedError` | A dispatcher helper is called for a provider that does not implement that operation (e.g. `text.list_models(api="anthropic")`). |
 
-## Exception descriptions
+## Image operations: `warnings` field
 
-- `EasyAiClientError` — base class for all library exceptions. Catch this to handle any easy-ai-clients failure generically.
-- `ConfigurationError` — base class for credential and configuration problems. Catch this when you want to handle any setup error without caring about the specific subtype.
-- `MissingCredentialError` — the selected provider was called without the required environment variables or explicit credentials. Exposes `.provider` (canonical provider name) and `.env_vars` (tuple of variable names that must be set).
-- `UnsupportedProviderError` — the provider name or alias is unknown.
-- `UnsupportedModelError` — the requested model is not supported by the adapter contract.
-- `InvalidParameterError` — one input value is invalid on its own (e.g., out of range, wrong type).
-- `IncompatibleParameterError` — two or more inputs are individually valid but cannot be used together.
-- `PricingUnavailableError` — the exact USD cost cannot be computed for the selected provider/model pair. The operation still succeeds; only `cost_usd` is unavailable.
-- `ProviderTimeoutError` — the HTTP request or long-running job polling timed out.
-- `JobFailedError` — a long-running provider job (video generation, transcription, etc.) completed in a failed state.
-- `TemporaryDownloadError` — the provider returned a temporary download URL for a result asset, and that URL could not be fetched safely (network error, expiry, etc.).
-- `InvalidProviderResponseError` — the provider returned a response shape that the adapter cannot parse. Usually indicates a provider API change or an unexpected error payload.
-
-## Missing credentials
+Image operations (`image.generate`, `image.edit`, `image.remix`) embed
+provider-side errors inside the public result instead of raising, when the
+provider returns a structured error payload. Inspect the `warnings` field:
 
 ```python
-from easy_ai_clients.exceptions import MissingCredentialError
-from easy_ai_clients.text import generate
-
-try:
-    generate(provider="openai", instructions="Write one sentence.")
-except MissingCredentialError as exc:
-    print(exc.provider)   # "openai"
-    print(exc.env_vars)   # ("OPENAI_API_KEY",)
+result = image.generate("...", api="openai")
+if result["warnings"]:
+    print("provider message:", result["warnings"])
 ```
 
-A `MissingCredentialError` for one provider does **not** affect other providers. Package imports and unrelated operations remain fully usable.
+This convention preserves the canonical return shape
+(`cust_usd`, `base64`, `warnings`, `request_id`) regardless of whether the
+generation succeeded.
 
-## Configuration errors (generic catch)
+`image.analyze` collapses similar provider-side errors into the `output`
+string so the call still returns the canonical shape
+(`request_id`, `cost_usd`, `input_text`, `output`).
 
-`MissingCredentialError` is a subclass of `ConfigurationError`. Catch `ConfigurationError` when you want to handle any credential or setup failure without caring about the specific type:
+## Catching unsupported parameters
+
+Every provider validates incoming kwargs against the parameter set it actually
+supports. A typo or an option from another provider will raise immediately:
 
 ```python
-from easy_ai_clients.exceptions import ConfigurationError
-from easy_ai_clients.text import generate
-
 try:
-    generate(provider="openai", instructions="Write one sentence.")
-except ConfigurationError as exc:
-    print(f"Configuration problem: {exc}")
+    text.generate("hi", api="openai", reasoning_effort="minimal")
+except ValueError as exc:
+    print(exc)
+# Unsupported parameter for openai responses: 'reasoning_effort'. Model: 'gpt-5-nano'.
+# Supported parameters for this context: ...
 ```
 
-## Unsupported provider or model
+For text providers, the error explains whether the offending parameter is
+known on a different provider surface.
+
+## Defensive programming pattern
 
 ```python
-from easy_ai_clients.exceptions import UnsupportedModelError, UnsupportedProviderError
-from easy_ai_clients.text import generate
+from easy_ai_clients import text
 
-try:
-    generate(provider="unknown-provider", instructions="Hello.")
-except UnsupportedProviderError as exc:
-    print(f"Unknown provider: {exc}")
-
-try:
-    generate(provider="openai", instructions="Hello.", model="gpt-99-ultra")
-except UnsupportedModelError as exc:
-    print(f"Unsupported model: {exc}")
+def safe_generate(prompt, *, api, **kwargs):
+    try:
+        return text.generate(prompt, api=api, **kwargs)
+    except ValueError as exc:
+        # Bad parameter or unknown api/model.
+        raise SystemExit(f"Configuration error: {exc}") from exc
+    except RuntimeError as exc:
+        # Missing credentials or provider HTTP failure.
+        raise SystemExit(f"Provider failure: {exc}") from exc
 ```
 
-## Long-running job failures
+## Streaming errors
 
-```python
-from easy_ai_clients.exceptions import JobFailedError, ProviderTimeoutError
-from easy_ai_clients.video import generate
-
-try:
-    result = generate(
-        provider="runway",
-        prompt="A slow pan across a canyon",
-        output_path="out.mp4",
-    )
-except ProviderTimeoutError:
-    print("The video job timed out. Increase `job_timeout_seconds` or retry later.")
-except JobFailedError as exc:
-    print(f"The video job failed on the provider side: {exc}")
-```
-
-## Pricing unavailable
-
-`PricingUnavailableError` is raised only when pricing information is explicitly requested and cannot be computed. For text generation, `cost_usd` in the result is always populated — if pricing data is missing for the model, the library raises this error instead of returning a silent zero.
-
-```python
-from easy_ai_clients.exceptions import PricingUnavailableError
-from easy_ai_clients.text import generate
-
-try:
-    result = generate(provider="openai", instructions="Hello.", model="gpt-99-ultra")
-    print(result.cost_usd)
-except PricingUnavailableError:
-    print("No pricing data available for this model.")
-```
-
-## Best practice
-
-- Catch `MissingCredentialError` near application startup or before user-triggered actions.
-- Catch `UnsupportedProviderError` and `UnsupportedModelError` to validate configuration at boot time.
-- Log `InvalidProviderResponseError` with the provider name and request metadata — it may indicate a provider API change.
-- Do not retry unconditionally. The library already retries known transient network failures. Only wrap retries around `ProviderTimeoutError` or `JobFailedError` when your use case justifies it.
-- For video and other long-running operations, tune `job_timeout_seconds` to match your provider's typical generation time rather than catching `ProviderTimeoutError` and retrying blindly.
+When `stream=True` is passed to a text provider, streaming events are
+accumulated internally and the dispatcher still returns the same dictionary.
+Any HTTP error during stream consumption is raised as a `RuntimeError` with
+the response status and a truncated body fragment.
