@@ -3,6 +3,22 @@
 All notable changes to **easy-ai-clients** are documented in this file.
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.1 — 2026-04-25
+
+### Changed
+
+- Reworked `README.md` as a PyPI-safe long description with absolute GitHub
+  links for repository files and directories.
+- Added `docs/usage.md` with public dispatcher examples, normalized response
+  structures, media input notes, streaming behavior, and cost update helpers.
+- Updated configuration and error documentation to match the current
+  dispatcher and provider-adapter behavior.
+- Updated provider documentation examples to use the public
+  `easy_ai_clients.text`, `easy_ai_clients.audio`, and `easy_ai_clients.image`
+  dispatchers instead of private or removed provider import paths.
+- Improved package metadata URLs and declared the README content type
+  explicitly for PyPI rendering.
+
 ## 0.4.0 — 2026-04-25
 
 This is the first fully working release of `easy-ai-clients`. The library was

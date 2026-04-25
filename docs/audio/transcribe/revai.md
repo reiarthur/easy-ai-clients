@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-Rev AI transcription is implemented in `transcribe/apis/revai.py` through `transcribe(audio_input, model="machine", **kwargs)`.
+Rev AI transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="revai")`; the provider adapter exposes `transcribe(audio_input, model="machine", **kwargs)`.
 
 - Signup/account: https://www.rev.ai/
 - API key variable: `REVAI_API_KEY`
@@ -69,13 +69,16 @@ Not implemented.
 
 ## Example
 
-```python
-from transcribe.apis import revai
+~~~python
+from easy_ai_clients import audio
 
-bundle = revai.transcribe(
+bundle = audio.transcribe(
     "audio.m4a",
-    model="machine",
-    language="pt",
-    skip_punctuation=False,
+    api="revai",
 )
-```
+print(bundle["text"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-Mistral speech synthesis is implemented in `synthesize/apis/mistral.py` through `generate(text, model="voxtral-mini-tts-2603", voice="default", language_code="en", **kwargs)`.
+Mistral speech synthesis is available through the public dispatcher `easy_ai_clients.audio.generate(..., api="mistral")`; the provider adapter exposes `generate(text, model="voxtral-mini-tts-2603", voice="default", language_code="en", **kwargs)`.
 
 - Signup/account: https://console.mistral.ai/
 - API key variable: `MISTRAL_API_KEY`
@@ -58,16 +58,16 @@ Mistral does not provide native word timestamps in the validated endpoint path. 
 
 ## Example
 
-```python
-from synthesize.apis import mistral
+~~~python
+from easy_ai_clients import audio
 
-result = mistral.generate(
-    "Hello from Mistral.",
-    model="voxtral-mini-tts-2603",
-    voice="default",
+result = audio.generate(
+    "Hello from mistral.",
+    api="mistral",
 )
-```
+print(result["cost_usd"])
+~~~
 
-## Restrictions And Blockers
+## Validation Note
 
-If the account has no saved voices and no reference audio is provided, the wrapper raises a clear `ValueError` because Mistral requires either a voice id or reference audio.
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

@@ -30,7 +30,7 @@ Pricing documentation:
 - Model selection: `model` keyword argument in **kwargs
 - Snapshot date: 2026-04-25
 
-The default is the lowest-cost sensible candidate selected from official pricing, official live catalogs, and repository validation. If official pricing is incomplete, the wrapper uses the strongest official pricing proxy available and records the uncertainty in validation artifacts.
+The default is the lowest-cost sensible candidate selected from official pricing, official live catalogs, and the implemented source defaults. If official pricing is incomplete, the wrapper uses the strongest official pricing proxy available or returns the safest available estimate.
 
 ## Lowest-Cost Default Policy
 
@@ -70,26 +70,25 @@ Coverage classes used by the validation matrix:
 
 The wrapper preserves the repository return shape exactly. Provider-side safety blocks, auth failures, billing failures, unsupported combinations, and transport failures are converted into the normalized `warnings` field for image operations or the normalized `output` field for analyze operations.
 
-For dynamic providers, the Markdown page is intentionally family-oriented. The dated validation matrix contains the per-model rows and catalog snapshot summaries for the live execution.
+For dynamic providers, the Markdown page is intentionally family-oriented. Provider model availability is dynamic; use the official provider docs and your own credentials for live production checks.
 
 ## Python Example
 
-```python
-from remix.apis import openai_api
+~~~python
+from easy_ai_clients import image
 
-result = openai_api.remix(
-    "Create a new image using these references.",
-    ["imagem.png"],
+result = image.remix(
+    "Keep the subject but use watercolor style.",
+    ["input.png"],
+    api="openai",
 )
 print(result)
-```
+~~~
 
 ## Pricing Notes
 
-Costs are exact only when the provider exposes usage or fixed per-request pricing that this repository can map deterministically. Otherwise the wrapper returns `0.0` with a warning or records the cost uncertainty in the validation matrix. OpenRouter costs can be refined with `updateCost(result_dict)` when a `request_id` is available.
+Costs are exact only when the provider exposes usage or fixed per-request pricing that this repository can map deterministically. Otherwise the wrapper returns 0.0 with a warning or with the safest available estimate. OpenRouter costs can be refined with image.update_cost("remix", result, api="openrouter") when a request_id is available.
 
 ## Validation Note
 
-Validation is executed through the Python 3.11 Conda environment named `image`. Current and future runs write dated artifacts under `tests/artefatos_testes/`, including `validation_matrix.md`, `validation_matrix.json`, provider result JSON files, and sanitized catalog summaries.
-
-Latest validation run for this update: `tests/artefatos_testes/image_api_validation_20260424_222258/`.
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

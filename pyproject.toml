@@ -4,9 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "easy-ai-clients"
-version = "0.4.0"
+version = "0.4.1"
 description = "Unified multi-provider Python client for text, image, and audio AI APIs."
-readme = "README.md"
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [
@@ -81,9 +81,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://pypi.org/project/easy-ai-clients/"
+Homepage = "https://github.com/reiarthur/easy-ai-clients"
 Repository = "https://github.com/reiarthur/easy-ai-clients"
+Documentation = "https://github.com/reiarthur/easy-ai-clients/tree/main/docs"
+Changelog = "https://github.com/reiarthur/easy-ai-clients/blob/main/CHANGELOG.md"
 Issues = "https://github.com/reiarthur/easy-ai-clients/issues"
+Package = "https://pypi.org/project/easy-ai-clients/"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/easy_ai_clients"]

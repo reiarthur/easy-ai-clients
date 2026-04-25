@@ -15,9 +15,10 @@ pip install -e ".[dev]"
 
 Set the environment variables of the providers you intend to exercise (only
 those you actually need). See [`.env.example`](.env.example) for the
-recognised names. The library does not auto-load `.env`; use
-[`python-dotenv`](https://pypi.org/project/python-dotenv/) or your own loader
-if you want to source a file.
+recognised names. Use [`python-dotenv`](https://pypi.org/project/python-dotenv/)
+or your own loader when local development depends on a `.env` file. Some
+adapters also read `.env` from the current working directory, but tests and
+scripts should load secrets explicitly when they require them.
 
 ## Running tests
 
@@ -100,11 +101,13 @@ Both must pass before publishing.
 
 ```bash
 python -m build
-TWINE_USERNAME=__token__ TWINE_PASSWORD=pypi-... twine upload dist/*
+TWINE_USERNAME=__token__ TWINE_PASSWORD=<project-token> twine upload dist/*
 ```
 
 The token must be scoped to the `easy-ai-clients` project. After uploading,
 verify the new release at `https://pypi.org/project/easy-ai-clients/<version>/`.
+Do not store PyPI credentials in `.pypirc`, shell profiles, docs, or committed
+files for one-off releases.
 
 ### Bumping the version
 

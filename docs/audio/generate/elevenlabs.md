@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-ElevenLabs speech synthesis is implemented in `synthesize/apis/elevenlabs.py` through `generate(text, model="eleven_flash_v2_5", voice="NndrHq4eUijN4wsQVtzW", language_code="en", **kwargs)`.
+ElevenLabs speech synthesis is available through the public dispatcher `easy_ai_clients.audio.generate(..., api="elevenlabs")`; the provider adapter exposes `generate(text, model="eleven_flash_v2_5", voice="NndrHq4eUijN4wsQVtzW", language_code="en", **kwargs)`.
 
 - Signup/account: https://elevenlabs.io/app/sign-up
 - API key variable: `ELEVENLABS_API_KEY`
@@ -102,18 +102,16 @@ The wrapper returns the standard synthesis bundle. Raw PCM, u-law, and A-law res
 
 ## Example
 
-```python
-from synthesize.apis import elevenlabs
+~~~python
+from easy_ai_clients import audio
 
-result = elevenlabs.generate(
-    "Hello from ElevenLabs.",
-    model="eleven_flash_v2_5",
-    voice="NndrHq4eUijN4wsQVtzW",
-    output_format="mp3_22050_32",
-    seed=1234,
+result = audio.generate(
+    "Hello from elevenlabs.",
+    api="elevenlabs",
 )
-```
+print(result["cost_usd"])
+~~~
 
-## Validation Notes
+## Validation Note
 
-Every implemented ElevenLabs synthesis model passed live validation on 2026-04-24. Evidence is in `tests/artefatos_testes/2026-04-24_audio_api_standardization/`.
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

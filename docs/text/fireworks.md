@@ -23,7 +23,7 @@
 - Public function signature: `generate(input_text, instruction=None, model='accounts/fireworks/models/gpt-oss-20b', **kwargs)`.
 - Current default model: `accounts/fireworks/models/gpt-oss-20b`.
 - Default selection date: `2026-04-25`.
-- Default selection source: live provider catalog, official pricing/model documentation, and real smoke validation in `validacao_text_apis_2026-04-25`.
+- Default selection source: live provider catalog, official pricing/model documentation, and source defaults.
 - Tie-break reasoning: accounts/fireworks/models/gpt-oss-20b is the lowest-cost serverless text model validated from Fireworks pricing and catalog.
 - Lowest-cost default policy: the wrapper sends only required text fields plus provider-required minimal output caps, when required. It does not enable tools, web/search, cache writes, structured output, premium service tiers, provider plugins, or explicit reasoning by default.
 - Parameter validation policy: every kwarg must appear in the provider's documented parameter set for this wrapper context. Otherwise `UnsupportedParameterError` identifies provider/API, model, invalid parameter, supported parameters, and whether the parameter is known elsewhere.
@@ -436,43 +436,42 @@
 - Cost is computed from provider usage/cost fields when available, otherwise from local fallback pricing tables for known models.
 
 ## I. Python examples
-### Minimal cheapest call
-```python
-from text.apis import fireworks
+### Minimal call
+~~~python
+from easy_ai_clients import text
 
-result = fireworks.generate("Reply with OK.")
+result = text.generate(
+    "Reply with OK.",
+    api="fireworks",
+)
 print(result["output_text"])
-```
+~~~
 
-### Explicit instruction
-```python
-result = fireworks.generate(
+### Explicit instruction and model
+~~~python
+result = text.generate(
     "Summarize this in one sentence.",
     instruction="Use plain English.",
+    model="accounts/fireworks/models/gpt-oss-20b",
+    api="fireworks",
 )
-```
+~~~
 
-### Explicit model
-```python
-result = fireworks.generate(
+### Provider-native options
+~~~python
+result = text.generate(
     "Reply with OK.",
     model="accounts/fireworks/models/gpt-oss-20b",
+    api="fireworks",
 )
-```
-
-### Full options for the primary surface
-```python
-result = fireworks.generate("Reply with OK.", model="accounts/fireworks/models/gpt-oss-20b", max_tokens=64, temperature=0, top_p=1, stop=["END"], stream=True)
-```
+~~~
 
 ## J. Pricing section
 - Pricing snapshot date: `2026-04-25`.
-- Pricing source: see the official references above and the validation artifact `validacao_text_apis_2026-04-25/catalog_fireworks.json`.
+- Pricing source: see the official references above plus provider usage fields or local fallback pricing tables in source.
 - Pricing can change without a code change, especially for routers and model aliases.
 - The wrapper omits premium tiers, tools, web/search, cache writes, and explicit reasoning by default to avoid surprise charges.
 
 ## K. Validation note
-- Real validation artifact: `tests/artefatos_testes/validacao_text_apis_2026-04-25/validation_matrix.md`.
-- Provider result counts in the final matrix: `{'passed': 11}`.
-- Failure blocker counts: `{}`.
-- Failed rows are not claimed as supported; they are documented as provider, route, account, or model restrictions observed during validation.
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

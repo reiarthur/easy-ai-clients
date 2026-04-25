@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-Google Gemini speech synthesis is implemented in `synthesize/apis/google.py` through `generate(text, model="gemini-2.5-flash-preview-tts", voice="Aoede", language_code="en", **kwargs)`.
+Google Gemini speech synthesis is available through the public dispatcher `easy_ai_clients.audio.generate(..., api="google")`; the provider adapter exposes `generate(text, model="gemini-2.5-flash-preview-tts", voice="Aoede", language_code="en", **kwargs)`.
 
 - Signup/account: https://aistudio.google.com/
 - API key variable: `GOOGLE_API_KEY`
@@ -60,14 +60,16 @@ Gemini TTS returns inline audio bytes. The wrapper decodes them into `AudioSegme
 
 ## Example
 
-```python
-from synthesize.apis import google
+~~~python
+from easy_ai_clients import audio
 
-result = google.generate(
-    "Speaker A: Hello. Speaker B: Hi.",
-    speaker_voice_configs=[
-        {"speaker": "A", "voice": "Kore"},
-        {"speaker": "B", "voice": "Puck"},
-    ],
+result = audio.generate(
+    "Hello from google.",
+    api="google",
 )
-```
+print(result["cost_usd"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

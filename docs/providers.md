@@ -8,6 +8,9 @@ The detailed per-provider notes (default models, accepted parameters,
 pricing, validation status, known limitations) live alongside this file in
 `docs/<modality>/<operation>/<provider>.md`.
 
+For copyable dispatcher examples and normalized response structures, see
+[`usage.md`](usage.md).
+
 ## Text — `easy_ai_clients.text`
 
 | API | Env var | Notes |

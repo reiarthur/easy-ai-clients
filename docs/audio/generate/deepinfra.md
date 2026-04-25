@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-DeepInfra speech synthesis is implemented in `synthesize/apis/deepinfra.py` through `generate(text, model="hexgrad/Kokoro-82M", voice="af_bella", language_code="en", **kwargs)`.
+DeepInfra speech synthesis is available through the public dispatcher `easy_ai_clients.audio.generate(..., api="deepinfra")`; the provider adapter exposes `generate(text, model="hexgrad/Kokoro-82M", voice="af_bella", language_code="en", **kwargs)`.
 
 - Signup/account: https://deepinfra.com/
 - API key variable: `DEEPINFRA_API_KEY`
@@ -135,13 +135,16 @@ All DeepInfra synthesis paths use Deepgram alignment for public word timings. Dy
 
 ## Example
 
-```python
-from synthesize.apis import deepinfra
+~~~python
+from easy_ai_clients import audio
 
-result = deepinfra.generate(
-    "Hello from DeepInfra.",
-    model="Qwen/Qwen3-TTS",
-    voice="Vivian",
-    language="Auto",
+result = audio.generate(
+    "Hello from deepinfra.",
+    api="deepinfra",
 )
-```
+print(result["cost_usd"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

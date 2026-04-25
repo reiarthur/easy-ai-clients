@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-Deepgram transcription is implemented in `transcribe/apis/deepgram.py` through `transcribe(audio_input, model="nova-2", **kwargs)`.
+Deepgram transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="deepgram")`; the provider adapter exposes `transcribe(audio_input, model="nova-2", **kwargs)`.
 
 - Signup/account: https://console.deepgram.com/signup
 - API key variable: `DEEPGRAM_API_KEY`
@@ -232,14 +232,16 @@ All models below inherit the shared Deepgram parameter surface unless noted. All
 
 ## Example
 
-```python
-from transcribe.apis import deepgram
+~~~python
+from easy_ai_clients import audio
 
-bundle = deepgram.transcribe(
+bundle = audio.transcribe(
     "audio.m4a",
-    model="nova-3",
-    language="pt",
-    keyterm="Meus",
-    search="Meus",
+    api="deepgram",
 )
-```
+print(bundle["text"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

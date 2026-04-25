@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-ElevenLabs transcription is implemented in `transcribe/apis/elevenlabs.py` through `transcribe(audio_input, model="scribe_v2", **kwargs)`.
+ElevenLabs transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="elevenlabs")`; the provider adapter exposes `transcribe(audio_input, model="scribe_v2", **kwargs)`.
 
 - Signup/account: https://elevenlabs.io/app/sign-up
 - API key variable: `ELEVENLABS_API_KEY`
@@ -51,14 +51,16 @@ Inherits the full ElevenLabs transcription surface.
 
 ## Example
 
-```python
-from transcribe.apis import elevenlabs
+~~~python
+from easy_ai_clients import audio
 
-bundle = elevenlabs.transcribe(
+bundle = audio.transcribe(
     "audio.m4a",
-    model="scribe_v2",
-    language_code="pt",
-    num_speakers=1,
-    keyterms=["Meus"],
+    api="elevenlabs",
 )
-```
+print(bundle["text"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

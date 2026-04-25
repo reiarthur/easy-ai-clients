@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-Speechmatics transcription is implemented in `transcribe/apis/speechmatics.py` through `transcribe(audio_input, model="standard", **kwargs)`.
+Speechmatics transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="speechmatics")`; the provider adapter exposes `transcribe(audio_input, model="standard", **kwargs)`.
 
 - Signup/account: https://portal.speechmatics.com/
 - API key variable: `SPEECHMATICS_API_KEY`
@@ -53,14 +53,16 @@ Inherits the shared Speechmatics parameter surface.
 
 ## Example
 
-```python
-from transcribe.apis import speechmatics
+~~~python
+from easy_ai_clients import audio
 
-bundle = speechmatics.transcribe(
+bundle = audio.transcribe(
     "audio.m4a",
-    model="standard",
-    language="pt",
-    enable_entities=True,
-    speaker_sensitivity=0.5,
+    api="speechmatics",
 )
-```
+print(bundle["text"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

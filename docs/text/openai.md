@@ -23,7 +23,7 @@
 - Public function signature: `generate(input_text, instruction=None, model='gpt-5-nano', **kwargs)`.
 - Current default model: `gpt-5-nano`.
 - Default selection date: `2026-04-25`.
-- Default selection source: live provider catalog, official pricing/model documentation, and real smoke validation in `validacao_text_apis_2026-04-25`.
+- Default selection source: live provider catalog, official pricing/model documentation, and source defaults.
 - Tie-break reasoning: gpt-5-nano is the lowest-cost relevant Responses API text model validated as callable.
 - Lowest-cost default policy: the wrapper sends only required text fields plus provider-required minimal output caps, when required. It does not enable tools, web/search, cache writes, structured output, premium service tiers, provider plugins, or explicit reasoning by default.
 - Parameter validation policy: every kwarg must appear in the provider's documented parameter set for this wrapper context. Otherwise `UnsupportedParameterError` identifies provider/API, model, invalid parameter, supported parameters, and whether the parameter is known elsewhere.
@@ -337,43 +337,42 @@
 - Cost is computed from provider usage/cost fields when available, otherwise from local fallback pricing tables for known models.
 
 ## I. Python examples
-### Minimal cheapest call
-```python
-from text.apis import openai
+### Minimal call
+~~~python
+from easy_ai_clients import text
 
-result = openai.generate("Reply with OK.")
+result = text.generate(
+    "Reply with OK.",
+    api="openai",
+)
 print(result["output_text"])
-```
+~~~
 
-### Explicit instruction
-```python
-result = openai.generate(
+### Explicit instruction and model
+~~~python
+result = text.generate(
     "Summarize this in one sentence.",
     instruction="Use plain English.",
+    model="gpt-5-nano",
+    api="openai",
 )
-```
+~~~
 
-### Explicit model
-```python
-result = openai.generate(
+### Provider-native options
+~~~python
+result = text.generate(
     "Reply with OK.",
     model="gpt-5-nano",
+    api="openai",
 )
-```
-
-### Full options for the primary surface
-```python
-result = openai.generate("Reply with JSON.", model="gpt-4.1-nano", max_output_tokens=64, temperature=0, text={"format": {"type": "json_object"}})
-```
+~~~
 
 ## J. Pricing section
 - Pricing snapshot date: `2026-04-25`.
-- Pricing source: see the official references above and the validation artifact `validacao_text_apis_2026-04-25/catalog_openai.json`.
+- Pricing source: see the official references above plus provider usage fields or local fallback pricing tables in source.
 - Pricing can change without a code change, especially for routers and model aliases.
 - The wrapper omits premium tiers, tools, web/search, cache writes, and explicit reasoning by default to avoid surprise charges.
 
 ## K. Validation note
-- Real validation artifact: `tests/artefatos_testes/validacao_text_apis_2026-04-25/validation_matrix.md`.
-- Provider result counts in the final matrix: `{'passed': 69, 'failed': 10}`.
-- Failure blocker counts: `{'catalog_listed_but_not_callable_in_endpoint': 6, 'provider_internal_error': 4}`.
-- Failed rows are not claimed as supported; they are documented as provider, route, account, or model restrictions observed during validation.
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

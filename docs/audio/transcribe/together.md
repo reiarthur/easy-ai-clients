@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-Together transcription is implemented in `transcribe/apis/together.py` through `transcribe(audio_input, model="openai/whisper-large-v3", **kwargs)`.
+Together transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="together")`; the provider adapter exposes `transcribe(audio_input, model="openai/whisper-large-v3", **kwargs)`.
 
 - Signup/account: https://api.together.ai/
 - API key variable: `TOGETHER_API_KEY`
@@ -66,13 +66,16 @@ Inherits the shared Together parameter surface.
 
 ## Example
 
-```python
-from transcribe.apis import together
+~~~python
+from easy_ai_clients import audio
 
-bundle = together.transcribe(
+bundle = audio.transcribe(
     "audio.m4a",
-    model="openai/whisper-large-v3",
-    language="pt",
-    temperature=0.0,
+    api="together",
 )
-```
+print(bundle["text"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

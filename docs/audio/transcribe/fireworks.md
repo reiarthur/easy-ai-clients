@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-Fireworks transcription is implemented in `transcribe/apis/fireworks.py` through `transcribe(audio_input, model="whisper-v3-turbo", **kwargs)`.
+Fireworks transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="fireworks")`; the provider adapter exposes `transcribe(audio_input, model="whisper-v3-turbo", **kwargs)`.
 
 - Signup/account: https://fireworks.ai/
 - API key variable: `FIREWORKS_API_KEY`
@@ -49,13 +49,16 @@ Inherits the shared Fireworks parameter surface.
 
 ## Example
 
-```python
-from transcribe.apis import fireworks
+~~~python
+from easy_ai_clients import audio
 
-bundle = fireworks.transcribe(
+bundle = audio.transcribe(
     "audio.m4a",
-    language="pt",
-    vad_model="silero",
-    alignment_model="mms_fa",
+    api="fireworks",
 )
-```
+print(bundle["text"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

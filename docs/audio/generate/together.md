@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-Together AI speech synthesis is implemented in `synthesize/apis/together.py` through `generate(text, model="hexgrad/Kokoro-82M", voice="af_alloy", language_code="en", **kwargs)`.
+Together AI speech synthesis is available through the public dispatcher `easy_ai_clients.audio.generate(..., api="together")`; the provider adapter exposes `generate(text, model="hexgrad/Kokoro-82M", voice="af_alloy", language_code="en", **kwargs)`.
 
 - Signup/account: https://api.together.ai/
 - API key variable: `TOGETHER_API_KEY`
@@ -118,12 +118,16 @@ Streaming mode uses Together word-alignment SSE events. Non-streaming mode uses 
 
 ## Example
 
-```python
-from synthesize.apis import together
+~~~python
+from easy_ai_clients import audio
 
-result = together.generate(
-    "Hello from Together.",
-    model="hexgrad/Kokoro-82M",
-    voice="af_alloy",
+result = audio.generate(
+    "Hello from together.",
+    api="together",
 )
-```
+print(result["cost_usd"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

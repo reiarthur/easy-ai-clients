@@ -4,7 +4,7 @@ Snapshot date: 2026-04-24.
 
 ## Overview
 
-xAI speech synthesis is implemented in `synthesize/apis/xai.py` through `generate(text, model="text-to-speech", voice="eve", language_code="en", **kwargs)`.
+xAI speech synthesis is available through the public dispatcher `easy_ai_clients.audio.generate(..., api="xai")`; the provider adapter exposes `generate(text, model="text-to-speech", voice="eve", language_code="en", **kwargs)`.
 
 - Signup/account: https://console.x.ai/
 - API key variable: `XAI_API_KEY`
@@ -45,13 +45,16 @@ Compressed output is decoded directly. PCM, mu-law, and A-law are wrapped into W
 
 ## Example
 
-```python
-from synthesize.apis import xai
+~~~python
+from easy_ai_clients import audio
 
-result = xai.generate(
-    "Hello from xAI.",
-    voice="eve",
-    codec="wav",
-    sample_rate=24000,
+result = audio.generate(
+    "Hello from xai.",
+    api="xai",
 )
-```
+print(result["cost_usd"])
+~~~
+
+## Validation Note
+
+The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.

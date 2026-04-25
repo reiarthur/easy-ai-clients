@@ -1,82 +1,82 @@
 # Configuration
 
-`easy-ai-clients` reads provider credentials from environment variables. The
-library does **not** auto-load a `.env` file from the package directory or
-inject any value implicitly. You can choose how to source secrets in your
-own application.
+`easy-ai-clients` resolves provider credentials from environment variables at
+provider-call time. Configure only the credentials for providers your
+application actually calls.
 
-## Recognised environment variables
+`os.environ` is always authoritative. If a variable is already present in the
+process, helpers that load local `.env` files preserve that value.
+
+## Recommended Setup
+
+For scripts and applications, load secrets before calling the library:
+
+```python
+from dotenv import load_dotenv
+
+load_dotenv()
+```
+
+or set variables in the shell:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+export DEEPGRAM_API_KEY="..."
+```
+
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
+$env:DEEPGRAM_API_KEY = "..."
+```
+
+Some current text and image helpers attempt to load a `.env` file from the
+current working directory before resolving credentials. Audio helpers read the
+process environment directly. Because this behavior is not uniform across every
+adapter, application code should load `.env` explicitly when it depends on one.
+
+Never commit a real `.env` file. Use the repository template:
+
+[`../.env.example`](../.env.example)
+
+## Recognized Environment Variables
 
 | Variable | Used by |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | `text.generate(api="anthropic")`, `image.analyze(api="anthropic")` |
 | `BFL_API_KEY` | `image.generate / edit / remix(api="bfl")` |
 | `COHERE_API_KEY` | `text.generate(api="cohere")` |
-| `DEEPGRAM_API_KEY` | `audio.transcribe(api="deepgram")` |
-| `DEEPGRAM_PROJECT_ID` | Optional. Filters Deepgram catalog calls to one project. |
+| `DEEPGRAM_API_KEY` | `audio.transcribe(api="deepgram")` and OpenAI/Google/Mistral/Together/xAI synthesis alignment paths where used |
+| `DEEPGRAM_PROJECT_ID` | Optional Deepgram project filter for catalog/cost lookup calls |
 | `DEEPINFRA_API_KEY` | `text.generate(api="deepinfra")`, `audio.generate(api="deepinfra")` |
 | `DEEPSEEK_API_KEY` | `text.generate(api="deepseek")` |
 | `ELEVENLABS_API_KEY` | `audio.generate(api="elevenlabs")`, `audio.transcribe(api="elevenlabs")` |
-| `FAL_KEY` | All `*(api="fal"|"falai")` calls |
-| `FIREWORKS_API_KEY` | All `*(api="fireworks")` calls |
-| `GOOGLE_API_KEY` | All `*(api="google")` calls |
+| `FAL_KEY` | `text.generate(api="fal")`, `audio.transcribe(api="falai")`, image operations using `api="falai"` |
+| `FIREWORKS_API_KEY` | Fireworks text, audio transcription, and image operations |
+| `GOOGLE_API_KEY` | Google text, audio generation, and image operations |
 | `GROQ_API_KEY` | `text.generate(api="groq")`, `image.analyze(api="groq")` |
 | `HUGGINGFACE_API_KEY` | `text.generate(api="huggingface")` |
 | `MISTRAL_API_KEY` | `text.generate(api="mistral")`, `audio.generate(api="mistral")` |
-| `OPENAI_API_KEY` | All `*(api="openai")` calls |
-| `OPENROUTER_API_KEY` | All `*(api="openrouter")` calls (also used by `text.generate(api="fal")` for catalog discovery) |
+| `OPENAI_API_KEY` | OpenAI text, audio, and image operations |
+| `OPENROUTER_API_KEY` | OpenRouter operations and some catalog/cost lookup paths |
 | `REVAI_API_KEY` | `audio.transcribe(api="revai")` |
 | `SPEECHMATICS_API_KEY` | `audio.transcribe(api="speechmatics")` |
 | `STABILITY_API_KEY` | `image.generate / edit / remix(api="stability")` |
-| `TOGETHER_API_KEY` | All `*(api="together")` calls |
-| `XAI_API_KEY` | All `*(api="xai")` calls |
+| `TOGETHER_API_KEY` | Together text, audio, and image operations |
+| `XAI_API_KEY` | xAI text, audio, and image operations |
 
-The full template lives at [`.env.example`](../.env.example).
+## Missing Credentials
 
-## Resolution flow
+Missing credentials are inert until the corresponding provider is called. For
+example, `OPENAI_API_KEY` is not required to call `text.generate(api="anthropic")`.
 
-1. The dispatcher routes the call to the selected provider module.
-2. The provider module looks the corresponding variable up in
-   `os.environ` only.
-3. If the variable is missing or empty, a clear `RuntimeError` /
-   `EnvironmentError` is raised before any network request is made.
+If a selected provider credential is missing or empty, the call raises a standard
+Python exception such as `RuntimeError`, `OSError`, `EnvironmentError`, or
+`ValueError`, depending on the adapter path.
 
-## Loading a `.env` file explicitly
+## Security Notes
 
-The simplest way is `python-dotenv`:
-
-```python
-from dotenv import load_dotenv
-load_dotenv()  # reads `.env` from the current working directory
-```
-
-The library will not override variables already set in the current process,
-which keeps your shell environment authoritative when you launch the script.
-
-## Shell example
-
-```bash
-# bash / zsh
-export OPENAI_API_KEY="sk-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-
-python my_script.py
-```
-
-```powershell
-# PowerShell
-$env:OPENAI_API_KEY = "sk-..."
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-
-python my_script.py
-```
-
-## Best practices
-
-- Only configure the variables for providers you actually use; missing
-  variables are inert until you call that provider.
-- Never commit a real `.env` file. Keep `.env` in `.gitignore` (the
-  repository's `.gitignore` already does this).
-- Use API tokens scoped to the smallest possible set of permissions.
-- Rotate tokens regularly and remove them from the environment when running
-  unrelated workloads.
+- Keep real tokens out of Git.
+- Scope provider tokens to the smallest useful permission set.
+- Prefer environment variables supplied by your deployment system in production.
+- Avoid printing credentials in logs or exception reports.
+- Rotate provider tokens after local testing or incident response.

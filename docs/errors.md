@@ -1,77 +1,103 @@
-# Error handling
+# Error Handling
 
-`easy-ai-clients` keeps the error model simple and predictable: it reuses
-standard Python exceptions instead of introducing a parallel hierarchy.
-Errors are raised eagerly whenever possible — typically before a network
-request is sent — so misconfigurations surface fast.
+`easy-ai-clients` uses standard Python exceptions instead of a custom exception
+hierarchy. Dispatchers validate the selected `api` before importing the private
+provider adapter, and provider adapters validate credentials and supported
+parameters before or during the outbound request.
 
-## Exception types
+## Common Exceptions
 
-| Exception | When |
+| Exception | Typical cause |
 | --- | --- |
-| `ValueError` | Invalid `api` selector, unsupported parameter, invalid choice for an enumerated parameter, invalid numeric range, or unsupported model identifier. |
-| `TypeError` | Unsupported keyword argument forwarded to a provider that explicitly rejects unknown kwargs. |
-| `EnvironmentError` / `RuntimeError` | Missing or empty environment variable for the selected provider's credential. |
-| `requests.HTTPError` / `httpx.HTTPStatusError` | Provider responded with a non-success HTTP status. The body is included in the error message (truncated) for fast triage. |
-| `requests.ConnectionError` / `requests.Timeout` | Transient network failure after exhausted retries. |
-| `NotImplementedError` | A dispatcher helper is called for a provider that does not implement that operation (e.g. `text.list_models(api="anthropic")`). |
+| `ValueError` | Missing or unknown `api`, unsupported provider model, invalid enumerated value, invalid numeric range, or unsupported parameter in adapters that raise `ValueError`. |
+| `TypeError` | Unsupported keyword argument in adapters that reject unknown kwargs with `TypeError`. |
+| `RuntimeError` | Missing credentials in some text/image paths, provider response normalization failure, or wrapped provider/network failure. |
+| `OSError` / `EnvironmentError` | Missing credentials in audio and some provider helper paths. |
+| `requests.HTTPError` / `httpx.HTTPStatusError` | Provider returned a non-success HTTP status and the adapter raised the HTTP exception directly. |
+| `requests.ConnectionError` / `requests.Timeout` | Network failure or timeout after retries. |
+| `NotImplementedError` | Helper called for a provider that does not implement it, such as `text.update_cost(api="anthropic")`. |
 
-## Image operations: `warnings` field
+Exact exception classes can vary by modality because provider adapters use
+different HTTP clients and normalization paths. Catch narrow exceptions around
+the operation you call when you need custom recovery behavior.
 
-Image operations (`image.generate`, `image.edit`, `image.remix`) embed
-provider-side errors inside the public result instead of raising, when the
-provider returns a structured error payload. Inspect the `warnings` field:
+## Image Warnings
+
+`image.generate`, `image.edit`, and `image.remix` preserve the public return
+shape when a provider returns a structured failure that can be normalized:
 
 ```python
-result = image.generate("...", api="openai")
+from easy_ai_clients import image
+
+result = image.generate("a small app icon", api="openai")
 if result["warnings"]:
-    print("provider message:", result["warnings"])
+    print("provider warning:", result["warnings"])
 ```
 
-This convention preserves the canonical return shape
-(`cust_usd`, `base64`, `warnings`, `request_id`) regardless of whether the
-generation succeeded.
+The returned dictionary still contains `cust_usd`, `base64`, `warnings`, and
+`request_id`. When generation fails, `base64` may be empty and `warnings` should
+be treated as the failure message.
 
-`image.analyze` collapses similar provider-side errors into the `output`
-string so the call still returns the canonical shape
-(`request_id`, `cost_usd`, `input_text`, `output`).
+`image.analyze` returns the normalized keys `request_id`, `cost_usd`,
+`input_text`, and `output`. Some provider-side failures are represented in the
+`output` string when the adapter can preserve the public return contract.
 
-## Catching unsupported parameters
+## Unsupported Parameters
 
-Every provider validates incoming kwargs against the parameter set it actually
-supports. A typo or an option from another provider will raise immediately:
-
-```python
-try:
-    text.generate("hi", api="openai", reasoning_effort="minimal")
-except ValueError as exc:
-    print(exc)
-# Unsupported parameter for openai responses: 'reasoning_effort'. Model: 'gpt-5-nano'.
-# Supported parameters for this context: ...
-```
-
-For text providers, the error explains whether the offending parameter is
-known on a different provider surface.
-
-## Defensive programming pattern
+Provider-native kwargs are validated by the selected adapter when that adapter
+has an explicit supported-parameter surface.
 
 ```python
 from easy_ai_clients import text
 
-def safe_generate(prompt, *, api, **kwargs):
-    try:
-        return text.generate(prompt, api=api, **kwargs)
-    except ValueError as exc:
-        # Bad parameter or unknown api/model.
-        raise SystemExit(f"Configuration error: {exc}") from exc
-    except RuntimeError as exc:
-        # Missing credentials or provider HTTP failure.
-        raise SystemExit(f"Provider failure: {exc}") from exc
+try:
+    text.generate("hi", api="openai", this_parameter_does_not_exist=True)
+except (TypeError, ValueError) as exc:
+    print("Rejected before or during request preparation:", exc)
 ```
 
-## Streaming errors
+Unsupported parameters are not silently ignored.
 
-When `stream=True` is passed to a text provider, streaming events are
-accumulated internally and the dispatcher still returns the same dictionary.
-Any HTTP error during stream consumption is raised as a `RuntimeError` with
-the response status and a truncated body fragment.
+## Cost Helper Errors
+
+Cost refresh helpers are implemented only for providers that expose compatible
+request lookup or generation lookup behavior.
+
+```python
+from easy_ai_clients import text
+
+result = text.generate("ping", api="openrouter")
+result = text.update_cost(result, api="openrouter")
+
+try:
+    text.update_cost({}, api="anthropic")
+except NotImplementedError:
+    print("Anthropic does not implement text.update_cost.")
+```
+
+For images, pass the operation name explicitly:
+
+```python
+from easy_ai_clients import image
+
+result = image.generate("a tiny robot", api="openrouter")
+result = image.update_cost("generate", result, api="openrouter")
+```
+
+## Defensive Pattern
+
+```python
+from easy_ai_clients import text
+
+
+def safe_generate(prompt: str, *, api: str, **kwargs):
+    try:
+        return text.generate(prompt, api=api, **kwargs)
+    except (TypeError, ValueError) as exc:
+        raise SystemExit(f"Configuration error: {exc}") from exc
+    except (RuntimeError, OSError) as exc:
+        raise SystemExit(f"Provider setup or runtime failure: {exc}") from exc
+```
+
+Do not catch broad exceptions unless you are at an application boundary where
+the error is logged, redacted, and converted to a user-facing failure.
