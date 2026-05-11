@@ -1,60 +1,71 @@
-# fal.ai Speech Transcription
+# Fal.ai Speech Transcription
 
-Snapshot date: 2026-04-24.
+Snapshot date: 2026-05-11.
 
 ## Overview
 
-fal.ai transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="falai")`; the provider adapter exposes `transcribe(audio_input, model="fal-ai/elevenlabs/speech-to-text/scribe-v2", **kwargs)`.
+Use Fal.ai through `easy_ai_clients.audio.transcribe(..., api="falai")`.
+The adapter exposes `transcribe(audio_input, model="fal-ai/elevenlabs/speech-to-text/scribe-v2", **kwargs)`.
 
-- Signup/account: https://fal.ai/
-- API key variable: `FAL_KEY`
-- Endpoint docs: https://fal.ai/models/fal-ai/elevenlabs/speech-to-text/api
-- Pricing API: https://api.fal.ai/v1/models/pricing
+- Provider homepage: https://fal.ai/
+- API key: `FAL_KEY`
+- Scribe v1 endpoint: https://fal.ai/models/fal-ai/elevenlabs/speech-to-text/api
+- Scribe v2 endpoint: https://fal.ai/models/fal-ai/elevenlabs/speech-to-text/scribe-v2/api
+- Pricing API: https://fal.ai/docs/platform-apis/v1/models/pricing
 
-## Defaults And Cost Behavior
+## Defaults
 
 - Default model: `fal-ai/elevenlabs/speech-to-text/scribe-v2`
-- Lowest-cost behavior: small normalized audio data URL submitted to the queue endpoint with default Scribe settings.
+- Supported models: `fal-ai/elevenlabs/speech-to-text`, `fal-ai/elevenlabs/speech-to-text/scribe-v2`
+- Language behavior with no concrete language: `language_code` is omitted and the upstream Scribe endpoint detects the language.
+- Default request shape: normalized audio data URL submitted to the Fal.ai queue with diarization and audio event tagging enabled.
 
-## Public Parameters
+## Accepted Kwargs
 
-- `audio_input`, `model`
-- `language_code`
-- `tag_audio_events`
-- `diarize`
-- `keyterms`
-- `num_speakers`
-- `language_mkd`
-- `timeout_seconds`
+| Parameter | Native name | Type/shape | Default | Allowed values/range | Notes | Affects cost |
+| --- | --- | --- | --- | --- | --- | --- |
+| `language_code` | `language_code` | string | omitted | provider language code | Omit for auto language detection. | No |
+| `tag_audio_events` | `tag_audio_events` | bool | `True` | bool | Audio event tagging. | No |
+| `diarize` | `diarize` | bool | `True` | bool | Speaker diarization. | No documented surcharge |
+| `keyterms` | `keyterms` | list[str] | omitted | provider-native | Scribe v2 keyterms use the documented premium when present. | Yes for Scribe v2 |
+| `num_speakers` | `num_speakers` | int | omitted | provider-native | Optional speaker hint. | No |
+| `language_mkd` | n/a | string or `False` | `"en"` | supported Markdown languages | Controls optional `mkd`. | No |
+| `timeout_seconds` | n/a | float | `300` | positive seconds | Queue submit timeout. | No |
 
-## Model Coverage
+Unknown kwargs raise `TypeError`.
 
-### Model: `fal-ai/elevenlabs/speech-to-text`
+## Model Notes
 
-Inherits the shared fal.ai parameter surface.
+### `fal-ai/elevenlabs/speech-to-text`
 
-- Provider label: Scribe v1.
-- Validated: yes, model smoke passed.
+Scribe v1 through Fal.ai. Pricing API currently reports a per-minute unit price.
 
-### Model: `fal-ai/elevenlabs/speech-to-text/scribe-v2`
+### `fal-ai/elevenlabs/speech-to-text/scribe-v2`
 
-Inherits the shared fal.ai parameter surface.
+Default model. Pricing API currently reports a lower per-minute unit price. When `keyterms` are supplied, the adapter applies the documented Scribe v2 keyterm premium.
 
-- Provider label: Scribe v2.
-- Validated: yes, model smoke and diarize + audio events + keyterms cluster passed.
+## Cost Behavior
 
-## Example
+Fal.ai transcription payloads do not include final per-call cost. The adapter queries the official Pricing API:
 
-~~~python
+- If `X-Fal-Billable-Units` is present, the adapter multiplies that header by the Pricing API unit price and returns `cost_source="pricing_api_billable_units"`.
+- If the header is absent, the adapter calculates from audio duration and the Pricing API unit price with `cost_source="pricing_api"`.
+- If the pricing lookup fails, `cost_usd=None`, `cost_source="unavailable"`, and `cost_lookup_error` explains the failure.
+
+Pricing API calculations are deterministic estimates, so `cost_is_estimated=True`.
+
+## Examples
+
+```python
 from easy_ai_clients import audio
 
+bundle = audio.transcribe("audio.mp3", api="falai")
+```
+
+```python
 bundle = audio.transcribe(
-    "audio.m4a",
+    "audio.mp3",
     api="falai",
+    model="fal-ai/elevenlabs/speech-to-text",
 )
-print(bundle["text"])
-~~~
-
-## Validation Note
-
-The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.
+```

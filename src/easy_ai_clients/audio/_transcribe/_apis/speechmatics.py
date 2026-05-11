@@ -29,8 +29,15 @@ from ..pre_processing import build_request_audio
 
 API_BASE_URL = "https://asr.api.speechmatics.com/v2"
 SUPPORTED_MODELS = {
-    "standard": {"price_per_hour": 0.24},
-    "enhanced": {"price_per_hour": 0.24},
+    "standard": {"price_per_hour": 0.45},
+    "enhanced": {"price_per_hour": 0.75},
+}
+ADDON_PRICES_PER_HOUR = {
+    "translation_config": 0.65,
+    "summarization_config": 0.12,
+    "auto_chapters_config": 0.40,
+    "sentiment_analysis_config": 0.12,
+    "topic_detection_config": 0.20,
 }
 SUPPORTED_KWARGS = {
     "language",
@@ -71,7 +78,7 @@ def transcribe(
         raise ValueError(f"Unsupported Speechmatics model '{model}'. Supported models: {supported_models}.")
 
     options = reject_unknown_kwargs("Speechmatics", model, kwargs, SUPPORTED_KWARGS)
-    language = options.pop("language", "en")
+    language = options.pop("language", "auto")
     diarization = options.pop("diarization", "speaker")
     enable_entities = bool(options.pop("enable_entities", False))
     speaker_sensitivity = options.pop("speaker_sensitivity", None)
@@ -167,17 +174,36 @@ def transcribe(
             "other_results": provider_other_results,
         },
     )
-    cost_usd = compute_cost_by_duration(
+    cost_usd = _compute_speechmatics_cost(
         ((payload.get("job") or {}).get("duration") or request_audio["audio_duration_seconds"]),
-        unit_price=SUPPORTED_MODELS[model]["price_per_hour"],
-        billing_unit="hour",
+        model=model,
+        config_payload=config_payload,
     )
     return _build_transcription_bundle(
         raw_payload,
         language_mkd=language_mkd,
         request_id=job_id,
         cost_usd=cost_usd,
+        cost_source="official_pricing_table",
+        cost_is_estimated=True,
     )
+
+
+def _compute_speechmatics_cost(duration_seconds, *, model, config_payload):
+    """Computes Speechmatics batch cost from the official hourly table."""
+    total = compute_cost_by_duration(
+        duration_seconds,
+        unit_price=SUPPORTED_MODELS[model]["price_per_hour"],
+        billing_unit="hour",
+    )
+    for config_key, addon_price in ADDON_PRICES_PER_HOUR.items():
+        if config_payload.get(config_key) not in (None, "", [], {}):
+            total += compute_cost_by_duration(
+                duration_seconds,
+                unit_price=addon_price,
+                billing_unit="hour",
+            )
+    return round(total, 6)
 
 
 def _parse_speechmatics_results(results):

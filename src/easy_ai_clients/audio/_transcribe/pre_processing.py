@@ -260,7 +260,7 @@ def load_audio(audio_input):
     if isinstance(audio_input, AudioSegment):
         return _normalize_audio(audio_input)
 
-    if isinstance(audio_input, (bytes, bytearray, memoryview)):
+    if isinstance(audio_input, bytes | bytearray | memoryview):
         return _normalize_audio(_load_audio_from_bytes(bytes(audio_input)))
 
     if isinstance(audio_input, os.PathLike):

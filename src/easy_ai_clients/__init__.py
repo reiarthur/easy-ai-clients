@@ -31,4 +31,4 @@ from . import audio, image, text
 
 __all__ = ["text", "audio", "image", "__version__"]
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"

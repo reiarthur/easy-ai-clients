@@ -127,7 +127,7 @@ def transcribe(
             words.append(normalized_word)
 
     raw_payload = build_raw_transcription_payload(
-        provider="fal",
+        provider="falai",
         model=model,
         audio_duration_seconds=request_audio["audio_duration_seconds"],
         language=language_code or payload.get("language_code"),
@@ -141,50 +141,92 @@ def transcribe(
             "queue_request_id": submit_payload.get("request_id"),
         },
     )
-    cost_usd = _resolve_fal_cost(
+    cost_metadata = _resolve_fal_cost_metadata(
         api_key,
         model,
         request_audio["audio_duration_seconds"],
         final_response.headers.get("X-Fal-Billable-Units"),
+        keyterms=keyterms,
     )
     return _build_transcription_bundle(
         raw_payload,
         language_mkd=language_mkd,
         request_id=submit_payload.get("request_id"),
-        cost_usd=cost_usd,
+        **cost_metadata,
     )
 
 
-def _resolve_fal_cost(api_key, model, audio_duration_seconds, billable_units_header=None):
-    """Resolves fal.ai cost using the official pricing API and billable units when available."""
-    pricing_response = request_with_retries(
-        "GET",
-        PRICING_URL,
-        headers={"Authorization": f"Key {api_key}"},
-        params={"endpoint_id": model},
-        timeout=(15.0, 60.0),
-    )
-    pricing_payload = response_json(pricing_response)
+def _resolve_fal_cost_metadata(
+    api_key,
+    model,
+    audio_duration_seconds,
+    billable_units_header=None,
+    *,
+    keyterms=None,
+):
+    """Resolves fal.ai cost metadata using the official pricing API."""
+    try:
+        pricing_response = request_with_retries(
+            "GET",
+            PRICING_URL,
+            headers={"Authorization": f"Key {api_key}"},
+            params={"endpoint_id": model},
+            timeout=(15.0, 60.0),
+        )
+        pricing_payload = response_json(pricing_response)
+    except Exception as error:
+        return {
+            "cost_usd": None,
+            "cost_source": "unavailable",
+            "cost_is_estimated": False,
+            "cost_lookup_error": f"fal.ai pricing lookup failed: {error}",
+        }
+
     prices = pricing_payload.get("prices") or []
     if not prices:
-        return 0.0
+        return {
+            "cost_usd": None,
+            "cost_source": "unavailable",
+            "cost_is_estimated": False,
+            "cost_lookup_error": "fal.ai pricing API did not return a price for this endpoint.",
+        }
 
     price_payload = prices[0]
-    unit_price = price_payload.get("unit_price")
+    try:
+        unit_price = float(price_payload.get("unit_price"))
+    except (TypeError, ValueError):
+        return {
+            "cost_usd": None,
+            "cost_source": "unavailable",
+            "cost_is_estimated": False,
+            "cost_lookup_error": "fal.ai pricing API returned an invalid unit_price for this endpoint.",
+        }
+    if keyterms and model == "fal-ai/elevenlabs/speech-to-text/scribe-v2":
+        unit_price *= 1.3
     unit_name = str(price_payload.get("unit") or "minutes").strip().lower()
 
     try:
         if billable_units_header not in (None, ""):
-            return round_cost(float(billable_units_header) * float(unit_price))
+            return {
+                "cost_usd": round_cost(float(billable_units_header) * unit_price),
+                "cost_source": "pricing_api_billable_units",
+                "cost_is_estimated": True,
+                "cost_lookup_error": None,
+            }
     except Exception:
         pass
 
     billing_unit = "hour" if unit_name.startswith("hour") else "minute"
-    return compute_cost_by_duration(
-        audio_duration_seconds,
-        unit_price=unit_price,
-        billing_unit=billing_unit,
-    )
+    return {
+        "cost_usd": compute_cost_by_duration(
+            audio_duration_seconds,
+            unit_price=unit_price,
+            billing_unit=billing_unit,
+        ),
+        "cost_source": "pricing_api",
+        "cost_is_estimated": True,
+        "cost_lookup_error": None,
+    }
 
 
 def _wait_for_fal_completion(api_key, status_url, max_polls=80, poll_interval_seconds=1.5):

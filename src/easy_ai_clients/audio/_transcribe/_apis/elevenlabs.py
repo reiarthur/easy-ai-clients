@@ -31,6 +31,8 @@ SUPPORTED_MODELS = {
     "scribe_v1": {"price_per_hour": 0.22},
     "scribe_v2": {"price_per_hour": 0.22},
 }
+ENTITY_DETECTION_PRICE_PER_HOUR = 0.070
+KEYTERM_PROMPTING_PRICE_PER_HOUR = 0.050
 TIMESTAMP_GRANULARITIES = {"word", "character", "none"}
 ENTITY_REDACTION_MODES = {"redacted", "entity_type", "enumerated_entity_type"}
 SUPPORTED_KWARGS = {
@@ -112,12 +114,12 @@ def transcribe(
         form_fields.append(("detect_speaker_roles", "true"))
     if entity_detection not in (None, False, "", []):
         entity_detection_value = entity_detection
-        if isinstance(entity_detection, (list, tuple, set)):
+        if isinstance(entity_detection, list | tuple | set):
             entity_detection_value = json.dumps(list(entity_detection), ensure_ascii=True)
         form_fields.append(("entity_detection", entity_detection_value))
     if entity_redaction not in (None, False, "", []):
         entity_redaction_value = entity_redaction
-        if isinstance(entity_redaction, (list, tuple, set)):
+        if isinstance(entity_redaction, list | tuple | set):
             entity_redaction_value = json.dumps(list(entity_redaction), ensure_ascii=True)
         form_fields.append(("entity_redaction", entity_redaction_value))
     if entity_redaction_mode:
@@ -163,16 +165,6 @@ def transcribe(
         if normalized_word:
             words.append(normalized_word)
 
-    base_multiplier = 1.0
-    if entity_detection not in (None, False, "", []):
-        base_multiplier += 0.3
-    if entity_redaction not in (None, False, "", []):
-        base_multiplier += 0.3
-    if keyterms:
-        base_multiplier += 0.2
-    if detect_speaker_roles:
-        base_multiplier += 0.1
-
     raw_payload = build_raw_transcription_payload(
         provider="elevenlabs",
         model=model,
@@ -188,16 +180,44 @@ def transcribe(
             "provider_language_code": payload.get("language_code"),
         },
     )
-    cost_usd = compute_cost_by_duration(
+    cost_usd = _compute_elevenlabs_cost(
         payload.get("audio_duration_secs") or request_audio["audio_duration_seconds"],
-        unit_price=SUPPORTED_MODELS[model]["price_per_hour"],
-        billing_unit="hour",
-        minimum_seconds=20.0 if len(list(keyterms or [])) > 100 else 0.0,
-        multiplier=base_multiplier,
+        model=model,
+        entity_detection=entity_detection,
+        keyterms=keyterms,
     )
     return _build_transcription_bundle(
         raw_payload,
         language_mkd=language_mkd,
         request_id=payload.get("transcription_id"),
         cost_usd=cost_usd,
+        cost_source="official_pricing_table",
+        cost_is_estimated=True,
     )
+
+
+def _compute_elevenlabs_cost(duration_seconds, *, model, entity_detection=None, keyterms=None):
+    """Computes ElevenLabs Scribe cost from the official hourly table."""
+    minimum_seconds = 20.0 if len(list(keyterms or [])) > 100 else 0.0
+    base_cost = compute_cost_by_duration(
+        duration_seconds,
+        unit_price=SUPPORTED_MODELS[model]["price_per_hour"],
+        billing_unit="hour",
+        minimum_seconds=minimum_seconds,
+    )
+    addon_cost = 0.0
+    if entity_detection not in (None, False, "", []):
+        addon_cost += compute_cost_by_duration(
+            duration_seconds,
+            unit_price=ENTITY_DETECTION_PRICE_PER_HOUR,
+            billing_unit="hour",
+            minimum_seconds=minimum_seconds,
+        )
+    if keyterms:
+        addon_cost += compute_cost_by_duration(
+            duration_seconds,
+            unit_price=KEYTERM_PROMPTING_PRICE_PER_HOUR,
+            billing_unit="hour",
+            minimum_seconds=minimum_seconds,
+        )
+    return round(base_cost + addon_cost, 6)

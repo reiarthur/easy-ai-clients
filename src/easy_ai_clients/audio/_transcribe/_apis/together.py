@@ -11,9 +11,8 @@ Official references:
   - STT guide: https://docs.together.ai/docs/speech-to-text
   - Current serverless model catalog/pricing: https://docs.together.ai/docs/serverless-models
 
-`nvidia/parakeet-tdt-0.6b-v3` is intentionally not exposed by this adapter because
-Together currently rejects `diarize=true` for that model, and this project's public
-contract requires speaker attribution compatible with `words[].speaker_id`.
+`nvidia/parakeet-tdt-0.6b-v3` is exposed without diarization by default because
+Together currently rejects `diarize=true` for that model on the validated endpoint.
 """
 
 from typing import Any
@@ -27,6 +26,7 @@ from .._apis._shared import (
     reject_unknown_kwargs,
     request_with_retries,
     response_json,
+    round_cost,
     validate_choice,
     validate_number_range,
 )
@@ -34,6 +34,7 @@ from ..post_processing import _build_transcription_bundle, build_raw_transcripti
 from ..pre_processing import build_request_audio
 
 API_URL = "https://api.together.xyz/v1/audio/transcriptions"
+MODELS_URL = "https://api.together.xyz/v1/models"
 SUPPORTED_MODELS = {
     "openai/whisper-large-v3": {
         "price_per_minute": 0.0015,
@@ -42,18 +43,6 @@ SUPPORTED_MODELS = {
     "nvidia/parakeet-tdt-0.6b-v3": {
         "price_per_minute": 0.0015,
         "supports_diarization": False,
-    },
-    "deepgram/flux": {
-        "price_per_minute": 0.0015,
-        "supports_diarization": True,
-    },
-    "deepgram/nova-3-en": {
-        "price_per_minute": 0.0015,
-        "supports_diarization": True,
-    },
-    "deepgram/nova-3-multi": {
-        "price_per_minute": 0.0015,
-        "supports_diarization": True,
     },
 }
 RESPONSE_FORMATS = {"json", "verbose_json"}
@@ -83,7 +72,7 @@ def transcribe(
         raise ValueError(f"Unsupported Together model '{model}'. Supported models: {supported_models}.")
 
     options = reject_unknown_kwargs("Together", model, kwargs, SUPPORTED_KWARGS)
-    language = options.pop("language", None)
+    language = options.pop("language", "auto")
     prompt = options.pop("prompt", None)
     response_format = str(options.pop("response_format", "verbose_json")).strip()
     validate_choice(response_format, RESPONSE_FORMATS, parameter_name="response_format", provider="Together", model=model)
@@ -188,17 +177,77 @@ def transcribe(
             "speaker_segments": provider_speaker_segments,
         },
     )
-    cost_usd = compute_cost_by_duration(
+    cost_metadata = _resolve_together_cost_metadata(
+        api_key,
+        model,
         payload.get("duration") or request_audio["audio_duration_seconds"],
-        unit_price=SUPPORTED_MODELS[model]["price_per_minute"],
-        billing_unit="minute",
     )
     return _build_transcription_bundle(
         raw_payload,
         language_mkd=language_mkd,
         request_id=payload.get("id"),
-        cost_usd=cost_usd,
+        **cost_metadata,
     )
+
+
+def _resolve_together_cost_metadata(api_key, model, duration_seconds):
+    """Resolves Together transcription cost from the model catalog when available."""
+    price_per_minute, lookup_error = _lookup_model_price_per_minute(api_key, model)
+    if price_per_minute is not None:
+        return {
+            "cost_usd": compute_cost_by_duration(
+                duration_seconds,
+                unit_price=price_per_minute,
+                billing_unit="minute",
+            ),
+            "cost_source": "pricing_api",
+            "cost_is_estimated": True,
+            "cost_lookup_error": None,
+        }
+
+    return {
+        "cost_usd": compute_cost_by_duration(
+            duration_seconds,
+            unit_price=SUPPORTED_MODELS[model]["price_per_minute"],
+            billing_unit="minute",
+        ),
+        "cost_source": "official_pricing_table",
+        "cost_is_estimated": True,
+        "cost_lookup_error": lookup_error,
+    }
+
+
+def _lookup_model_price_per_minute(api_key, model):
+    """Fetches Together model transcribe pricing from the authenticated catalog."""
+    try:
+        response = request_with_retries(
+            "GET",
+            MODELS_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=(15.0, 60.0),
+        )
+        payload = response.json()
+    except Exception as error:
+        return None, f"Together model pricing lookup failed: {error}"
+
+    if isinstance(payload, dict):
+        items = payload.get("data") or payload.get("models") or []
+    else:
+        items = payload
+    if isinstance(items, dict):
+        items = list(items.values())
+    for item in list(items or []):
+        if not isinstance(item, dict):
+            continue
+        if item.get("id") != model and item.get("name") != model:
+            continue
+        pricing = item.get("pricing") or {}
+        transcribe_pricing = pricing.get("transcribe") or pricing.get("audio_transcription") or {}
+        for key in ("price_per_minute", "price_per_audio_minute", "per_minute"):
+            value = transcribe_pricing.get(key)
+            if value is not None:
+                return round_cost(value), None
+    return None, f"Together model pricing lookup did not include transcribe pricing for '{model}'."
 
 
 def _normalize_timestamp_granularities(value):

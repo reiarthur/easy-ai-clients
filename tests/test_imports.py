@@ -30,6 +30,7 @@ def test_audio_dispatchers_callable():
 
     assert callable(audio.generate)
     assert callable(audio.transcribe)
+    assert callable(audio.update_cost)
     assert isinstance(audio.available_synthesize_apis(), tuple)
     assert isinstance(audio.available_transcribe_apis(), tuple)
 
@@ -47,7 +48,7 @@ def test_image_dispatchers_callable():
     ("modality", "operation", "providers"),
     [
         ("text", "_apis", (
-            "anthropic", "cohere", "deepinfra", "deepseek", "fal", "fireworks",
+            "anthropic", "cohere", "deepinfra", "deepseek", "falai", "fireworks",
             "google", "groq", "huggingface", "mistral", "openai", "openrouter",
             "together", "xai",
         )),
@@ -57,7 +58,7 @@ def test_image_dispatchers_callable():
         )),
         ("audio", "_transcribe._apis", (
             "deepgram", "elevenlabs", "falai", "fireworks",
-            "revai", "speechmatics", "together",
+            "speechmatics", "together",
         )),
         ("image", "_generate._apis", (
             "bfl", "falai", "fireworks", "google", "openai",

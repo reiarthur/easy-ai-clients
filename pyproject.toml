@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "easy-ai-clients"
-version = "0.4.1"
+version = "0.5.0"
 description = "Unified multi-provider Python client for text, image, and audio AI APIs."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
@@ -39,10 +39,9 @@ keywords = [
   "deepseek",
   "huggingface",
   "openrouter",
-  "fal",
+  "falai",
   "stability",
   "black-forest-labs",
-  "rev-ai",
   "speechmatics",
   "xai",
   "cohere",

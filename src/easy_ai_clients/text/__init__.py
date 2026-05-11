@@ -20,7 +20,7 @@ _AVAILABLE_APIS = (
     "cohere",
     "deepinfra",
     "deepseek",
-    "fal",
+    "falai",
     "fireworks",
     "google",
     "groq",

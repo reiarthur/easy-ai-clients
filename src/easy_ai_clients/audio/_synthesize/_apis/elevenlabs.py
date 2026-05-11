@@ -291,7 +291,7 @@ def _request_tts(
 
 
 def _is_retryable_error(error: Exception) -> bool:
-    if isinstance(error, (requests.Timeout, requests.ConnectionError)):
+    if isinstance(error, requests.Timeout | requests.ConnectionError):
         return True
     if isinstance(error, requests.HTTPError) and error.response is not None:
         return int(error.response.status_code) in {408, 409, 425, 429, 500, 502, 503, 504}

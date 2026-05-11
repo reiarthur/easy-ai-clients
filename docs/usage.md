@@ -110,7 +110,6 @@ from easy_ai_clients import audio
 bundle = audio.transcribe(
     "speech.mp3",
     api="deepgram",
-    language="en",
 )
 
 print(bundle["text"])
@@ -125,12 +124,21 @@ Common return keys include:
 - `text`
 - `words`
 - `segments`
-- `speakers`
 - `silences`
-- `metadata`
+- `speaker_count`
+- `speaker_details`
+- `provider_metadata`
 - `request_id`
 - `cost_usd`
+- `cost_source`
+- `cost_is_estimated`
+- `cost_lookup_error`
 - optional `mkd`
+
+Empty optional lists and dictionaries may be omitted from the returned bundle.
+Provider defaults avoid concrete language codes where possible. Deepgram sends
+`detect_language=true`, Speechmatics and Together send `language="auto"`, and
+ElevenLabs, Fal.ai, and Fireworks omit their language field by default.
 
 ## Image Generation, Editing, and Remixing
 
@@ -219,13 +227,16 @@ inside `warnings` to preserve the normalized return shape.
 ## Cost Updates
 
 ```python
-from easy_ai_clients import image, text
+from easy_ai_clients import audio, image, text
 
 text_result = text.generate("ping", api="openrouter")
 text_result = text.update_cost(text_result, api="openrouter")
 
 image_result = image.generate("a small robot", api="openrouter")
 image_result = image.update_cost("generate", image_result, api="openrouter")
+
+transcript = audio.transcribe("speech.mp3", api="deepgram")
+transcript = audio.update_cost("transcribe", transcript, api="deepgram")
 ```
 
 Cost helpers raise `NotImplementedError` when the selected provider does not

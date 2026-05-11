@@ -46,11 +46,11 @@ Never commit a real `.env` file. Use the repository template:
 | `BFL_API_KEY` | `image.generate / edit / remix(api="bfl")` |
 | `COHERE_API_KEY` | `text.generate(api="cohere")` |
 | `DEEPGRAM_API_KEY` | `audio.transcribe(api="deepgram")` and OpenAI/Google/Mistral/Together/xAI synthesis alignment paths where used |
-| `DEEPGRAM_PROJECT_ID` | Optional Deepgram project filter for catalog/cost lookup calls |
+| `DEEPGRAM_PROJECT_ID` | Optional Deepgram project filter for transcription cost lookup calls |
 | `DEEPINFRA_API_KEY` | `text.generate(api="deepinfra")`, `audio.generate(api="deepinfra")` |
 | `DEEPSEEK_API_KEY` | `text.generate(api="deepseek")` |
 | `ELEVENLABS_API_KEY` | `audio.generate(api="elevenlabs")`, `audio.transcribe(api="elevenlabs")` |
-| `FAL_KEY` | `text.generate(api="fal")`, `audio.transcribe(api="falai")`, image operations using `api="falai"` |
+| `FAL_KEY` | `text.generate(api="falai")`, `audio.transcribe(api="falai")`, image operations using `api="falai"` |
 | `FIREWORKS_API_KEY` | Fireworks text, audio transcription, and image operations |
 | `GOOGLE_API_KEY` | Google text, audio generation, and image operations |
 | `GROQ_API_KEY` | `text.generate(api="groq")`, `image.analyze(api="groq")` |
@@ -58,7 +58,6 @@ Never commit a real `.env` file. Use the repository template:
 | `MISTRAL_API_KEY` | `text.generate(api="mistral")`, `audio.generate(api="mistral")` |
 | `OPENAI_API_KEY` | OpenAI text, audio, and image operations |
 | `OPENROUTER_API_KEY` | OpenRouter operations and some catalog/cost lookup paths |
-| `REVAI_API_KEY` | `audio.transcribe(api="revai")` |
 | `SPEECHMATICS_API_KEY` | `audio.transcribe(api="speechmatics")` |
 | `STABILITY_API_KEY` | `image.generate / edit / remix(api="stability")` |
 | `TOGETHER_API_KEY` | Together text, audio, and image operations |
@@ -72,6 +71,18 @@ example, `OPENAI_API_KEY` is not required to call `text.generate(api="anthropic"
 If a selected provider credential is missing or empty, the call raises a standard
 Python exception such as `RuntimeError`, `OSError`, `EnvironmentError`, or
 `ValueError`, depending on the adapter path.
+
+## Deepgram Cost Lookup
+
+`audio.update_cost("transcribe", result, api="deepgram")` retries Deepgram
+Management/Usage lookup for the request IDs stored in a transcription result.
+The key in `DEEPGRAM_API_KEY` needs `usage:read`. `DEEPGRAM_PROJECT_ID` is
+optional but recommended when the key can access multiple projects or cannot
+list projects.
+
+If exact lookup is unavailable, transcription results keep truthful cost
+metadata: `cost_usd` may be `None`, `cost_source` explains the source, and
+`cost_lookup_error` contains a sanitized reason.
 
 ## Security Notes
 

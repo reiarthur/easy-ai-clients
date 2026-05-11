@@ -4,6 +4,7 @@ Last updated: 2026-04-21
 """
 
 import math
+import os
 import re
 
 _SEGMENT_JOIN_GAP_SECONDS = 3.0
@@ -20,6 +21,36 @@ _WORD_RE = re.compile(
     flags=re.UNICODE,
 )
 _VALID_MKD_LANGUAGES = {"en", "zh", "hi", "es", "fr", "ar", "bn", "pt", "ru", "ur"}
+_VALID_COST_SOURCES = {
+    "provider_response",
+    "usage_lookup",
+    "pricing_api",
+    "pricing_api_billable_units",
+    "official_pricing_table",
+    "unavailable",
+}
+_COST_SECRET_ENV_VARS = (
+    "DEEPGRAM_API_KEY",
+    "ELEVENLABS_API_KEY",
+    "FAL_KEY",
+    "FIREWORKS_API_KEY",
+    "SPEECHMATICS_API_KEY",
+    "TOGETHER_API_KEY",
+)
+_COST_SECRET_PATTERNS = (
+    (
+        re.compile(r"(?i)(authorization\s*[:=]\s*(?:bearer|key|token)?\s*)[^\s,;]+"),
+        r"\1[redacted]",
+    ),
+    (
+        re.compile(r"(?i)\b(bearer|key|token)\s+[A-Za-z0-9._~+/=-]{8,}"),
+        r"\1 [redacted]",
+    ),
+    (
+        re.compile(r"(?i)\b(api[_-]?key|token|secret)(\s*[:=]\s*)[^\s,;]+"),
+        r"\1\2[redacted]",
+    ),
+)
 _MKD_TEXT = {
     "en": {
         "transcription_metadata": "Transcription Metadata",
@@ -327,6 +358,37 @@ def _clean_text(text):
     return " ".join(str(text or "").strip().split())
 
 
+def _sanitize_cost_lookup_error(error):
+    """Returns a compact, non-secret cost lookup error message."""
+    if error is None:
+        return None
+    cleaned = _clean_text(error)
+    if not cleaned:
+        return None
+    for env_var in _COST_SECRET_ENV_VARS:
+        secret_value = str(os.getenv(env_var) or "").strip()
+        if len(secret_value) >= 6:
+            cleaned = cleaned.replace(secret_value, "[redacted]")
+    for pattern, replacement in _COST_SECRET_PATTERNS:
+        cleaned = pattern.sub(replacement, cleaned)
+    return cleaned[:500]
+
+
+def _normalize_cost_source(cost_source):
+    """Returns one supported public cost source value."""
+    normalized = _clean_text(cost_source)
+    if normalized in _VALID_COST_SOURCES:
+        return normalized
+    return "unavailable"
+
+
+def _normalize_cost_usd(cost_usd):
+    """Preserves unknown cost as None and validates known numeric costs."""
+    if cost_usd is None:
+        return None
+    return float(cost_usd)
+
+
 def _ensure_payload(transcription_payload):
     """Validates that the input payload is a raw transcription dictionary."""
     if not isinstance(transcription_payload, dict):
@@ -345,7 +407,7 @@ def _compact_value(value):
             compacted[key] = compacted_item
         return compacted
 
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         compacted_items = []
         for item in value:
             compacted_item = _compact_value(item)
@@ -1674,7 +1736,15 @@ def _build_markdown_payload(metadata, segment_records, language_mkd):
     }
 
 
-def _build_transcription_bundle(transcription_payload, language_mkd="en", request_id=None, cost_usd=None):
+def _build_transcription_bundle(
+    transcription_payload,
+    language_mkd="en",
+    request_id=None,
+    cost_usd=None,
+    cost_source="unavailable",
+    cost_is_estimated=False,
+    cost_lookup_error=None,
+):
     """Builds the final flattened transcription bundle from the raw payload."""
     payload = _ensure_payload(transcription_payload)
     transcription_info = _get_transcription_info(payload)
@@ -1707,7 +1777,6 @@ def _build_transcription_bundle(transcription_payload, language_mkd="en", reques
             else None,
             "text": _get_transcript_text(payload),
             "request_id": normalized_request_ids,
-            "cost_usd": float(cost_usd) if cost_usd is not None else 0.0,
             "duration": metadata["duration"],
             "speaker_count": metadata["speaker_count"],
             "speech_coverage_percent": metadata["speech_coverage_percent"],
@@ -1721,6 +1790,10 @@ def _build_transcription_bundle(transcription_payload, language_mkd="en", reques
             "provider_metadata": transcription_info.get("provider_metadata"),
         }
     )
+    bundle_payload["cost_usd"] = _normalize_cost_usd(cost_usd)
+    bundle_payload["cost_source"] = _normalize_cost_source(cost_source)
+    bundle_payload["cost_is_estimated"] = bool(cost_is_estimated)
+    bundle_payload["cost_lookup_error"] = _sanitize_cost_lookup_error(cost_lookup_error)
 
     markdown_payload = _build_markdown_payload(metadata, segment_records, language_mkd)
     if markdown_payload is not None:

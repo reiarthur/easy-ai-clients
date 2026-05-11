@@ -1,68 +1,93 @@
 # Speechmatics Speech Transcription
 
-Snapshot date: 2026-04-24.
+Snapshot date: 2026-05-11.
 
 ## Overview
 
-Speechmatics transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="speechmatics")`; the provider adapter exposes `transcribe(audio_input, model="standard", **kwargs)`.
+Use Speechmatics through `easy_ai_clients.audio.transcribe(..., api="speechmatics")`.
+The adapter exposes `transcribe(audio_input, model="standard", **kwargs)`.
 
-- Signup/account: https://portal.speechmatics.com/
-- API key variable: `SPEECHMATICS_API_KEY`
-- Batch API docs: https://docs.speechmatics.com/api-ref/asr/transcription-jobs/create
+- Provider homepage: https://www.speechmatics.com/
+- Portal: https://portal.speechmatics.com/
+- API key: `SPEECHMATICS_API_KEY`
+- Documentation: https://docs.speechmatics.com/
+- Batch job API: https://docs.speechmatics.com/api-ref/asr/transcription-jobs/create
+- Python SDK examples: https://docs.speechmatics.com/sdk/python-sdk
 - Pricing: https://www.speechmatics.com/pricing
+- Pricing CSV referenced by pricing page: https://assets.ctfassets.net/yze1aysi0225/16iPaLPpkieCFFWh54jfrA/df1761507f16eeb934a14dbc0d315de3/Pricing_April_2025-updated-December.csv
 
-## Defaults And Cost Behavior
+## Defaults
 
 - Default model: `standard`
-- Lowest-cost behavior: standard operating point, speaker diarization enabled, no optional enrichment unless requested.
-- Jobs are submitted and polled until completion.
+- Supported models: `standard`, `enhanced`
+- Language behavior with no concrete language: the adapter sends `language="auto"`, the official batch language identification mode.
+- Default request shape: batch transcription job with speaker diarization enabled and no enrichment add-ons unless requested.
 
-## Public Parameters
+## Accepted Kwargs
 
-- `audio_input`, `model`
-- `language`
-- `output_locale`
-- `additional_vocab`
-- `diarization`
-- `channel_diarization_labels`
-- `enable_entities`
-- `audio_filtering_config`
-- `transcript_filtering_config`
-- `speaker_diarization_config`
-- `speaker_sensitivity`
-- `prefer_current_speaker`
-- `speaker_identifiers`
-- Top-level job configs: `notification_config`, `tracking`, `output_config`, `translation_config`, `language_identification_config`, `summarization_config`, `sentiment_analysis_config`, `topic_detection_config`, `auto_chapters_config`, `audio_events_config`
-- `language_mkd`, `timeout_seconds`
+| Parameter | Native name | Type/shape | Default | Allowed values/range | Notes | Affects cost |
+| --- | --- | --- | --- | --- | --- | --- |
+| `language` | `language` | string | `"auto"` | Speechmatics language code or `auto` | Keep omitted for auto detection. | No |
+| `diarization` | `diarization` | string | `"speaker"` | provider-native | Speaker diarization mode. | No documented surcharge |
+| `output_locale` | `output_locale` | string | omitted | provider-native | Transcription config field. | No |
+| `additional_vocab` | `additional_vocab` | list/mapping | omitted | provider-native | Transcription config field. | No documented surcharge |
+| `channel_diarization_labels` | same | list | omitted | provider-native | Transcription config field. | No |
+| `enable_entities` | `enable_entities` | bool | `False` | bool | Entity extraction. | No documented surcharge |
+| `audio_filtering_config` | same | mapping | omitted | provider-native | Transcription config field. | No documented surcharge |
+| `transcript_filtering_config` | same | mapping | omitted | provider-native | Transcription config field. | No documented surcharge |
+| `speaker_diarization_config` | same | mapping | omitted | provider-native | May also be built from speaker kwargs. | No |
+| `speaker_sensitivity` | nested | float | omitted | provider-native | Added to `speaker_diarization_config`. | No |
+| `prefer_current_speaker` | nested | bool | omitted | bool | Added to `speaker_diarization_config`. | No |
+| `speaker_identifiers` | same | list/mapping | omitted | provider-native | Transcription config field. | No |
+| `notification_config`, `tracking`, `output_config` | same | mapping | omitted | provider-native | Top-level job configs. | No |
+| `translation_config` | same | mapping | omitted | provider-native | Official add-on. | Yes |
+| `summarization_config` | same | mapping | omitted | provider-native | Official add-on. | Yes |
+| `auto_chapters_config` | same | mapping | omitted | provider-native | Official add-on. | Yes |
+| `sentiment_analysis_config` | same | mapping | omitted | provider-native | Official add-on. | Yes |
+| `topic_detection_config` | same | mapping | omitted | provider-native | Official add-on. | Yes |
+| `language_identification_config` | same | mapping | omitted | provider-native | Optional language ID config. | No documented surcharge |
+| `audio_events_config` | same | mapping | omitted | provider-native | Audio events. | No documented surcharge |
+| `language_mkd` | n/a | string or `False` | `"en"` | supported Markdown languages | Controls optional `mkd`. | No |
+| `timeout_seconds` | n/a | float | `300` | positive seconds | Submit timeout. | No |
 
-## Model Coverage
+Unknown kwargs raise `TypeError`.
 
-### Model: `standard`
+## Model Notes
 
-Inherits the shared Speechmatics parameter surface.
+### `standard`
 
-- Default operating point.
-- Validated: yes, model smoke and entities + speaker config cluster passed.
+Default operating point. Official batch price: US$0.45/hour.
 
-### Model: `enhanced`
+### `enhanced`
 
-Inherits the shared Speechmatics parameter surface.
+Enhanced batch operating point. Official batch price: US$0.75/hour.
 
-- Enhanced operating point.
-- Validated: yes, model smoke passed.
+## Cost Behavior
 
-## Example
+Speechmatics job/transcript responses do not return final per-call cost. The adapter calculates from the official batch pricing table and returns `cost_source="official_pricing_table"` and `cost_is_estimated=True`.
 
-~~~python
+Add-on prices applied when corresponding configs are supplied:
+
+- Translation: US$0.65/hour.
+- Summaries: US$0.12/hour.
+- Chapters: US$0.40/hour.
+- Sentiment: US$0.12/hour.
+- Topics: US$0.20/hour.
+
+No undocumented add-ons are charged.
+
+## Examples
+
+```python
 from easy_ai_clients import audio
 
+bundle = audio.transcribe("audio.mp3", api="speechmatics")
+```
+
+```python
 bundle = audio.transcribe(
-    "audio.m4a",
+    "audio.mp3",
     api="speechmatics",
+    model="enhanced",
 )
-print(bundle["text"])
-~~~
-
-## Validation Note
-
-The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.
+```

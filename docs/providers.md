@@ -19,7 +19,7 @@ For copyable dispatcher examples and normalized response structures, see
 | [`cohere`](text/cohere.md) | `COHERE_API_KEY` | Chat v2. |
 | [`deepinfra`](text/deepinfra.md) | `DEEPINFRA_API_KEY` | OpenAI-compatible. |
 | [`deepseek`](text/deepseek.md) | `DEEPSEEK_API_KEY` | DeepSeek chat with reasoning. |
-| [`fal`](text/fal.md) | `FAL_KEY`; catalog uses `OPENROUTER_API_KEY` | fal LLM gateway. |
+| [`falai`](text/falai.md) | `FAL_KEY`; catalog uses `OPENROUTER_API_KEY` | Fal.ai LLM gateway. |
 | [`fireworks`](text/fireworks.md) | `FIREWORKS_API_KEY` | Reasoning + speculation kwargs. |
 | [`google`](text/google.md) | `GOOGLE_API_KEY` | Gemini `generateContent`. |
 | [`groq`](text/groq.md) | `GROQ_API_KEY` | OpenAI-compatible chat. |
@@ -48,13 +48,12 @@ For copyable dispatcher examples and normalized response structures, see
 
 | API | Env var | Notes |
 | --- | --- | --- |
-| [`deepgram`](audio/transcribe/deepgram.md) | `DEEPGRAM_API_KEY` (+ optional `DEEPGRAM_PROJECT_ID`) | Nova / Whisper. |
-| [`elevenlabs`](audio/transcribe/elevenlabs.md) | `ELEVENLABS_API_KEY` | Scribe v1/v2 with diarization. |
-| [`falai`](audio/transcribe/falai.md) | `FAL_KEY` | Routes to ElevenLabs Scribe via fal. |
-| [`fireworks`](audio/transcribe/fireworks.md) | `FIREWORKS_API_KEY` | Whisper-v3-turbo. |
-| [`revai`](audio/transcribe/revai.md) | `REVAI_API_KEY` | Async job + diarization. |
-| [`speechmatics`](audio/transcribe/speechmatics.md) | `SPEECHMATICS_API_KEY` | Standard / enhanced. |
-| [`together`](audio/transcribe/together.md) | `TOGETHER_API_KEY` | Whisper-large-v3. |
+| [`deepgram`](audio/transcribe/deepgram.md) | `DEEPGRAM_API_KEY` (+ optional `DEEPGRAM_PROJECT_ID`) | Kept Nova, Enhanced, Base specialty, and Whisper models; supports `audio.update_cost`. |
+| [`elevenlabs`](audio/transcribe/elevenlabs.md) | `ELEVENLABS_API_KEY` | Scribe v1/v2 with omitted-language detection. |
+| [`falai`](audio/transcribe/falai.md) | `FAL_KEY` | Routes to ElevenLabs Scribe via Fal.ai Pricing API. |
+| [`fireworks`](audio/transcribe/fireworks.md) | `FIREWORKS_API_KEY` | Whisper v3 and Whisper v3 Turbo. |
+| [`speechmatics`](audio/transcribe/speechmatics.md) | `SPEECHMATICS_API_KEY` | Standard/enhanced batch with `language="auto"`. |
+| [`together`](audio/transcribe/together.md) | `TOGETHER_API_KEY` | Whisper-large-v3 and Parakeet serverless models. |
 
 ## Image — `easy_ai_clients.image`
 

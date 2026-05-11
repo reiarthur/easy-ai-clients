@@ -35,7 +35,6 @@ SUPPORTED_MODELS = {
         "price_per_minute": 0.0009,
     },
 }
-DIARIZATION_PRICE_MULTIPLIER = 1.4
 VAD_MODELS = {"silero", "whisperx-pyannet"}
 ALIGNMENT_MODELS = {"mms_fa", "tdnn_ffn"}
 RESPONSE_FORMATS = {"json", "text", "srt", "verbose_json", "vtt"}
@@ -179,13 +178,14 @@ def transcribe(
         payload.get("duration") or request_audio["audio_duration_seconds"],
         unit_price=model_config["price_per_minute"],
         billing_unit="minute",
-        multiplier=DIARIZATION_PRICE_MULTIPLIER if diarize else 1.0,
     )
     return _build_transcription_bundle(
         raw_payload,
         language_mkd=language_mkd,
         request_id=payload.get("request_id"),
         cost_usd=cost_usd,
+        cost_source="official_pricing_table",
+        cost_is_estimated=True,
     )
 
 

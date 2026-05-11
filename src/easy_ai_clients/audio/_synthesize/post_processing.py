@@ -126,7 +126,7 @@ def _finalize_synthesis_output(
     cost_usd: Any,
 ) -> dict[str, Any]:
     """Decode chunks, concatenate audio, and return the public synthesis payload."""
-    if not isinstance(chunks, (list, tuple)) or not chunks:
+    if not isinstance(chunks, list | tuple) or not chunks:
         raise ValueError("chunks must include at least one synthesis chunk.")
 
     final_audio = AudioSegment.empty()
@@ -239,7 +239,7 @@ def _extract_chunk_observed_words(
         return _words_from_char_alignment(char_alignment)
 
     timing_events = chunk.get("timing_events")
-    if isinstance(timing_events, (list, tuple)):
+    if isinstance(timing_events, list | tuple):
         return _words_from_timing_events(timing_events)
 
     if str(chunk.get("text") or "").strip():

@@ -1,64 +1,73 @@
 # Fireworks AI Speech Transcription
 
-Snapshot date: 2026-04-24.
+Snapshot date: 2026-05-11.
 
 ## Overview
 
-Fireworks transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="fireworks")`; the provider adapter exposes `transcribe(audio_input, model="whisper-v3-turbo", **kwargs)`.
+Use Fireworks AI through `easy_ai_clients.audio.transcribe(..., api="fireworks")`.
+The adapter exposes `transcribe(audio_input, model="whisper-v3-turbo", **kwargs)`.
 
-- Signup/account: https://fireworks.ai/
-- API key variable: `FIREWORKS_API_KEY`
-- Audio transcription docs: https://docs.fireworks.ai/api-reference/audio-transcriptions
+- Provider homepage: https://fireworks.ai/
+- API key: `FIREWORKS_API_KEY`
+- Audio transcription API: https://docs.fireworks.ai/api-reference/audio-transcriptions
+- Whisper v3 model page: https://fireworks.ai/models/fireworks/whisper-v3
+- Whisper v3 Turbo model page: https://fireworks.ai/models/fireworks/whisper-v3-turbo
 - Pricing: https://fireworks.ai/pricing
 
-## Defaults And Cost Behavior
+## Defaults
 
 - Default model: `whisper-v3-turbo`
-- Lowest-cost behavior: turbo endpoint, `verbose_json`, word timestamps, diarization enabled.
+- Supported models: `whisper-v3`, `whisper-v3-turbo`
+- Language behavior with no concrete language: `language` is omitted and Fireworks detects the language.
+- Default request shape: `verbose_json`, word and segment timestamps, diarization enabled.
 
-## Public Parameters
+## Accepted Kwargs
 
-- `audio_input`, `model`
-- `vad_model`
-- `alignment_model`
-- `language`
-- `prompt`
-- `temperature`
-- `response_format`: must be `verbose_json`
-- `timestamp_granularities`: must include `word`
-- `diarize`
-- `min_speakers`, `max_speakers`
-- `preprocessing`
-- `language_mkd`, `timeout_seconds`
+| Parameter | Native name | Type/shape | Default | Allowed values/range | Notes | Affects cost |
+| --- | --- | --- | --- | --- | --- | --- |
+| `language` | `language` | string | omitted | provider language code | Omit for auto detection. | No |
+| `prompt` | `prompt` | string | omitted | provider-native | Optional prompt/context. | No |
+| `temperature` | `temperature` | float | omitted | `>= 0.0` | Forwarded. | No |
+| `response_format` | `response_format` | string | `verbose_json` | `verbose_json` required | Other formats are rejected to preserve normalized words and segments. | No |
+| `timestamp_granularities` | `timestamp_granularities` | list/string | `["word", "segment"]` | `word`, `segment`; must include `word` | Sent as repeated form fields. | No |
+| `diarize` | `diarize` | bool | `True` | bool | Speaker diarization. No local surcharge multiplier is applied. | No documented surcharge |
+| `min_speakers`, `max_speakers` | same | int | omitted | provider-native | Speaker count hints. | No |
+| `vad_model` | `vad_model` | string | omitted | `silero`, `whisperx-pyannet` | Optional VAD model. | No documented surcharge |
+| `alignment_model` | `alignment_model` | string | omitted | `mms_fa`, `tdnn_ffn` | Optional alignment model. | No documented surcharge |
+| `preprocessing` | `preprocessing` | string | omitted | `none`, `dynamic`, `soft_dynamic`, `bass_dynamic` | Optional preprocessing. | No documented surcharge |
+| `language_mkd` | n/a | string or `False` | `"en"` | supported Markdown languages | Controls optional `mkd`. | No |
+| `timeout_seconds` | n/a | float | `300` | positive seconds | Request timeout. | No |
 
-## Model Coverage
+Unknown kwargs raise `TypeError`.
 
-### Model: `whisper-v3`
+## Model Notes
 
-Inherits the shared Fireworks parameter surface.
+### `whisper-v3`
 
-- Endpoint: production audio transcription endpoint.
-- Validated: yes, model smoke passed.
+Production Whisper v3 endpoint. Official model page lists US$0.0015 per audio minute, billed per second.
 
-### Model: `whisper-v3-turbo`
+### `whisper-v3-turbo`
 
-Inherits the shared Fireworks parameter surface.
+Default model. Official model page lists US$0.0009 per audio minute, billed per second.
 
-- Default model and lowest-cost wrapper path.
-- Validated: yes, model smoke and VAD + alignment + preprocessing + speaker hints cluster passed.
+## Cost Behavior
 
-## Example
+The transcription response does not return final cost or usage. The adapter calculates from the official per-minute model prices and returns `cost_source="official_pricing_table"` and `cost_is_estimated=True`.
 
-~~~python
+No undocumented diarization multiplier is applied.
+
+## Examples
+
+```python
 from easy_ai_clients import audio
 
+bundle = audio.transcribe("audio.mp3", api="fireworks")
+```
+
+```python
 bundle = audio.transcribe(
-    "audio.m4a",
+    "audio.mp3",
     api="fireworks",
+    model="whisper-v3",
 )
-print(bundle["text"])
-~~~
-
-## Validation Note
-
-The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.
+```

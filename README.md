@@ -89,11 +89,12 @@ Supported operations:
 
 | Module | Function | Purpose | Providers |
 | --- | --- | --- | --- |
-| `text` | `generate` | Text-in / text-out generation | `anthropic`, `cohere`, `deepinfra`, `deepseek`, `fal`, `fireworks`, `google`, `groq`, `huggingface`, `mistral`, `openai`, `openrouter`, `together`, `xai` |
-| `text` | `list_models` | Provider model catalog helper where implemented | `openai`, `openrouter` |
+| `text` | `generate` | Text-in / text-out generation | `anthropic`, `cohere`, `deepinfra`, `deepseek`, `falai`, `fireworks`, `google`, `groq`, `huggingface`, `mistral`, `openai`, `openrouter`, `together`, `xai` |
+| `text` | `list_models` | Provider model catalog helper where implemented | `falai`, `openai`, `openrouter` |
 | `text` | `update_cost` | Post-hoc cost refresh where implemented | `openai`, `openrouter` |
 | `audio` | `generate` | Text-to-speech synthesis | `deepinfra`, `elevenlabs`, `google`, `mistral`, `openai`, `together`, `xai` |
-| `audio` | `transcribe` | Speech-to-text transcription | `deepgram`, `elevenlabs`, `falai`, `fireworks`, `revai`, `speechmatics`, `together` |
+| `audio` | `transcribe` | Speech-to-text transcription | `deepgram`, `elevenlabs`, `falai`, `fireworks`, `speechmatics`, `together` |
+| `audio` | `update_cost` | Post-hoc transcription cost refresh where implemented | `deepgram` |
 | `image` | `generate` | Text-to-image generation | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
 | `image` | `edit` | Prompt-guided image editing | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
 | `image` | `remix` | Reference-image guided generation | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
@@ -193,8 +194,10 @@ speech = audio.generate(
 )
 speech["audio"].export("narration.mp3", format="mp3")
 
-bundle = audio.transcribe("narration.mp3", api="deepgram", language="en")
+bundle = audio.transcribe("narration.mp3", api="deepgram")
 print(bundle["text"])
+
+bundle = audio.update_cost("transcribe", bundle, api="deepgram")
 ```
 
 Transcription inputs may be local paths, supported URLs, bytes, base64 strings,
@@ -241,7 +244,7 @@ is black = editable and white = preserve.
 | --- | --- |
 | `text.generate(...)` | `request_id`, `cost_source`, `cost_usd`, `input_text`, optional `instruction`, `output_text` |
 | `audio.generate(...)` | `cost_usd`, `audio` as `pydub.AudioSegment`, `words` |
-| `audio.transcribe(...)` | `text`, `words`, `segments`, `speakers`, `silences`, `metadata`, `request_id`, `cost_usd`, optional `mkd` |
+| `audio.transcribe(...)` | `text`, optional `words` / `segments` / `silences`, speaker metadata, `provider_metadata`, `request_id`, `cost_usd`, `cost_source`, `cost_is_estimated`, `cost_lookup_error`, optional `mkd` |
 | `image.generate(...)`, `image.edit(...)`, `image.remix(...)` | `cust_usd`, `base64`, `warnings`, `request_id` |
 | `image.analyze(...)` | `request_id`, `cost_usd`, `input_text`, `output` |
 
@@ -280,22 +283,25 @@ structured error payload.
 
 ## Costs
 
-Cost values are best-effort normalized USD estimates:
+Cost values are best-effort normalized USD values:
 
 - Some providers return exact usage or request cost.
 - Some adapters compute cost from usage fields and local pricing tables.
 - Some router/provider costs can be refined after the call.
-- A value of `0.0` can mean no cost was reported or no safe estimate was
-  available.
+- For transcription, unknown cost is `None`, not `0.0`; inspect
+  `cost_source`, `cost_is_estimated`, and `cost_lookup_error`.
 
 ```python
-from easy_ai_clients import image, text
+from easy_ai_clients import audio, image, text
 
 text_result = text.generate("ping", api="openrouter")
 text_result = text.update_cost(text_result, api="openrouter")
 
 image_result = image.generate("a tiny robot", api="openrouter")
 image_result = image.update_cost("generate", image_result, api="openrouter")
+
+transcript = audio.transcribe("meeting.mp3", api="deepgram")
+transcript = audio.update_cost("transcribe", transcript, api="deepgram")
 ```
 
 ## Errors

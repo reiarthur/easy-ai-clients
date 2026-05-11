@@ -40,6 +40,43 @@ def test_text_generate_routes_to_provider(monkeypatch):
     assert captured["kwargs"] == {"temperature": 0.1}
 
 
+def test_text_generate_routes_to_falai_provider(monkeypatch):
+    from easy_ai_clients import text
+    from easy_ai_clients.text._apis import falai as provider
+
+    captured = {}
+
+    def fake_generate(input_text, instruction=None, model="google/gemini-2.5-flash", **kwargs):
+        captured["input_text"] = input_text
+        captured["instruction"] = instruction
+        captured["model"] = model
+        captured["kwargs"] = kwargs
+        return {
+            "request_id": "stub",
+            "cost_source": "stub",
+            "cost_usd": 0.0,
+            "input_text": input_text,
+            "output_text": "ok",
+        }
+
+    monkeypatch.setattr(provider, "generate", fake_generate)
+    result = text.generate("hello", model="demo/model", api="falai", temperature=0.1)
+
+    assert result["output_text"] == "ok"
+    assert captured["input_text"] == "hello"
+    assert captured["model"] == "demo/model"
+    assert captured["kwargs"] == {"temperature": 0.1}
+
+
+def test_text_old_fal_identifier_rejected():
+    from easy_ai_clients import text
+
+    assert "falai" in text.available_apis()
+    assert "fal" not in text.available_apis()
+    with pytest.raises(ValueError):
+        text.generate("hello", api="fal")
+
+
 def test_audio_generate_routes_to_provider(monkeypatch):
     from easy_ai_clients import audio
     from easy_ai_clients.audio._synthesize._apis import openai as provider
@@ -89,6 +126,31 @@ def test_audio_transcribe_routes_to_provider(monkeypatch):
     assert captured["audio_input"] == "audio.mp3"
     assert captured["model"] == "nova-2"
     assert captured["kwargs"] == {"language": "en"}
+
+
+def test_audio_update_cost_dispatcher_errors():
+    from easy_ai_clients import audio
+
+    with pytest.raises(NotImplementedError):
+        audio.update_cost("transcribe", {"text": "ok"}, api="fireworks")
+
+    with pytest.raises(ValueError):
+        audio.update_cost("generate", {"text": "ok"}, api="deepgram")
+
+
+def test_removed_revai_transcription_identifier_rejected():
+    from easy_ai_clients import audio
+
+    assert audio.available_transcribe_apis() == (
+        "deepgram",
+        "elevenlabs",
+        "falai",
+        "fireworks",
+        "speechmatics",
+        "together",
+    )
+    with pytest.raises(ValueError):
+        audio.transcribe("audio.mp3", api="revai")
 
 
 @pytest.mark.parametrize("op", ["generate", "edit", "remix", "analyze"])

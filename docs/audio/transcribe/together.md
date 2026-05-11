@@ -1,81 +1,75 @@
 # Together AI Speech Transcription
 
-Snapshot date: 2026-04-24.
+Snapshot date: 2026-05-11.
 
 ## Overview
 
-Together transcription is available through the public dispatcher `easy_ai_clients.audio.transcribe(..., api="together")`; the provider adapter exposes `transcribe(audio_input, model="openai/whisper-large-v3", **kwargs)`.
+Use Together AI through `easy_ai_clients.audio.transcribe(..., api="together")`.
+The adapter exposes `transcribe(audio_input, model="openai/whisper-large-v3", **kwargs)`.
 
-- Signup/account: https://api.together.ai/
-- API key variable: `TOGETHER_API_KEY`
-- STT guide: https://docs.together.ai/docs/speech-to-text
-- Transcription reference: https://docs.together.ai/reference/audio-transcriptions
-- Serverless catalog/pricing: https://docs.together.ai/docs/serverless-models
+- Provider homepage: https://www.together.ai/
+- API: https://api.together.ai/
+- API key: `TOGETHER_API_KEY`
+- Audio transcription reference: https://docs.together.ai/reference/audio-transcriptions
+- Serverless models: https://docs.together.ai/docs/serverless/models
+- Billing and usage: https://docs.together.ai/docs/billing-usage-limits
 
-## Defaults And Cost Behavior
+## Defaults
 
 - Default model: `openai/whisper-large-v3`
-- Lowest-cost behavior: serverless transcription, `verbose_json`, word and segment timestamps, diarization enabled only where the model supports it.
+- Supported models: `openai/whisper-large-v3`, `nvidia/parakeet-tdt-0.6b-v3`
+- Language behavior with no concrete language: the adapter sends `language="auto"`.
+- Default request shape: `verbose_json`, word and segment timestamps. Diarization defaults to the model capability.
 
-## Public Parameters
+Removed from the public surface: `deepgram/flux`, `deepgram/nova-3-en`, and `deepgram/nova-3-multi`, because the serverless endpoint returned `model_not_available` and required dedicated endpoints.
 
-- `audio_input`, `model`
-- `language`
-- `prompt`
-- `response_format`: must be `verbose_json`
-- `temperature`
-- `timestamp_granularities`: must include `word`
-- `diarize`
-- `min_speakers`, `max_speakers`
-- `language_mkd`, `timeout_seconds`
+## Accepted Kwargs
 
-## Model Coverage
+| Parameter | Native name | Type/shape | Default | Allowed values/range | Notes | Affects cost |
+| --- | --- | --- | --- | --- | --- | --- |
+| `language` | `language` | string | `"auto"` | provider language value | Keep omitted for auto detection. | No |
+| `prompt` | `prompt` | string | omitted | provider-native | Optional prompt/context. | No |
+| `response_format` | `response_format` | string | `verbose_json` | `json`, `verbose_json`; `verbose_json` required | Other formats are rejected to preserve the bundle. | No |
+| `temperature` | `temperature` | float | omitted | `0.0` to `1.0` | Forwarded. | No |
+| `timestamp_granularities` | `timestamp_granularities` | list/string | `["word", "segment"]` | `word`, `segment`; must include `word` | Sent as repeated form fields. | No |
+| `diarize` | `diarize` | bool | model capability | bool | Rejected for Parakeet on the validated endpoint. | No documented surcharge |
+| `min_speakers`, `max_speakers` | same | int | omitted | provider-native | Speaker count hints when diarization is supported. | No |
+| `language_mkd` | n/a | string or `False` | `"en"` | supported Markdown languages | Controls optional `mkd`. | No |
+| `timeout_seconds` | n/a | float | `300` | positive seconds | Request timeout. | No |
 
-### Model: `openai/whisper-large-v3`
+Unknown kwargs raise `TypeError`.
 
-Inherits the shared Together parameter surface.
+## Model Notes
 
-- Default model.
-- Supports diarization in the validated endpoint path.
-- Validated: yes, model smoke and temperature + speaker hints cluster passed.
+### `openai/whisper-large-v3`
 
-### Model: `nvidia/parakeet-tdt-0.6b-v3`
+Default model. Supports diarization on the validated endpoint. Public serverless pricing lists US$0.0015 per audio minute.
 
-Inherits the shared Together parameter surface except diarization.
+### `nvidia/parakeet-tdt-0.6b-v3`
 
-- `diarize=True` is rejected because live endpoint validation showed this model does not support diarization.
-- Validated: yes, model smoke passed with diarization disabled.
+Passed transcription accuracy validation, but returned unreliable language metadata in the audit. The validated endpoint does not support diarization for this model; `diarize=True` is rejected. Public serverless pricing lists US$0.0015 per audio minute.
 
-### Model: `deepgram/flux`
+## Cost Behavior
 
-Inherits the shared Together parameter surface.
+Together transcription responses do not return final cost. The adapter first tries the authenticated `/v1/models` catalog for `pricing.transcribe.price_per_minute`:
 
-- Validation status: blocked. The live endpoint returned `model_not_available` and required a dedicated endpoint.
+- Catalog success: `cost_source="pricing_api"`.
+- Catalog failure: fallback to the documented per-minute table with `cost_source="official_pricing_table"` and `cost_lookup_error` explaining the lookup issue.
 
-### Model: `deepgram/nova-3-en`
+Both paths are deterministic estimates, so `cost_is_estimated=True`.
 
-Inherits the shared Together parameter surface.
+## Examples
 
-- Validation status: blocked. The live endpoint required a dedicated endpoint.
-
-### Model: `deepgram/nova-3-multi`
-
-Inherits the shared Together parameter surface.
-
-- Validation status: blocked. The live endpoint required a dedicated endpoint.
-
-## Example
-
-~~~python
+```python
 from easy_ai_clients import audio
 
+bundle = audio.transcribe("audio.mp3", api="together")
+```
+
+```python
 bundle = audio.transcribe(
-    "audio.m4a",
+    "audio.mp3",
     api="together",
+    model="nvidia/parakeet-tdt-0.6b-v3",
 )
-print(bundle["text"])
-~~~
-
-## Validation Note
-
-The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.
+```

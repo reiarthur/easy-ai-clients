@@ -155,7 +155,7 @@ def audio_bytes_to_base64(audio_bytes: bytes | bytearray) -> str:
 
 def decode_base64_bytes(encoded: str | bytes | bytearray) -> bytes:
     """Decode one plain base64 string or data URL into raw bytes."""
-    value = encoded.decode("utf-8", errors="ignore") if isinstance(encoded, (bytes, bytearray)) else str(encoded or "")
+    value = encoded.decode("utf-8", errors="ignore") if isinstance(encoded, bytes | bytearray) else str(encoded or "")
     value = value.strip()
     if value.startswith("data:") and "," in value:
         value = value.split(",", 1)[1]

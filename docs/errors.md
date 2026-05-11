@@ -84,6 +84,37 @@ result = image.generate("a tiny robot", api="openrouter")
 result = image.update_cost("generate", result, api="openrouter")
 ```
 
+For transcription, only Deepgram currently implements post-hoc cost refresh:
+
+```python
+from easy_ai_clients import audio
+
+result = audio.transcribe("meeting.mp3", api="deepgram")
+result = audio.update_cost("transcribe", result, api="deepgram")
+
+try:
+    audio.update_cost("transcribe", result, api="fireworks")
+except NotImplementedError:
+    print("Fireworks does not implement transcription cost refresh.")
+```
+
+`audio.update_cost(...)` raises `ValueError` for unsupported operations; the
+only supported operation is currently `"transcribe"`.
+
+## Unknown Transcription Cost
+
+Transcription adapters do not invent free costs. When cost cannot be known,
+results use:
+
+- `cost_usd=None`
+- `cost_source="unavailable"`
+- `cost_is_estimated=False`
+- `cost_lookup_error` with a sanitized reason when one is available
+
+When a provider price table or pricing API is used, `cost_is_estimated=True`.
+Deepgram exact usage lookup returns `cost_source="usage_lookup"` and
+`cost_is_estimated=False`.
+
 ## Defensive Pattern
 
 ```python

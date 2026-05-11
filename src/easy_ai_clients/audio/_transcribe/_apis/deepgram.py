@@ -12,7 +12,11 @@ from urllib.parse import urlencode
 
 import requests
 
-from ..post_processing import _build_transcription_bundle, build_raw_transcription_payload
+from ..post_processing import (
+    _build_transcription_bundle,
+    _sanitize_cost_lookup_error,
+    build_raw_transcription_payload,
+)
 from ..pre_processing import (
     _clean_text,
     _safe_float,
@@ -20,6 +24,7 @@ from ..pre_processing import (
     export_segment_as_wav,
     load_audio,
 )
+from ._shared import compute_cost_by_duration, round_cost
 
 MAX_CONCURRENT_NOVA_PRERECORDED = 50
 MAX_CONCURRENT_WHISPER_PRERECORDED = 3
@@ -47,8 +52,6 @@ SUPPORTED_MODELS = {
     "enhanced-meeting",
     "enhanced-phonecall",
     "enhanced-finance",
-    "base",
-    "base-general",
     "base-meeting",
     "base-phonecall",
     "base-voicemail",
@@ -56,8 +59,6 @@ SUPPORTED_MODELS = {
     "base-conversationalai",
     "base-video",
     "whisper",
-    "whisper-tiny",
-    "whisper-base",
     "whisper-small",
     "whisper-medium",
     "whisper-large",
@@ -106,6 +107,9 @@ SUPPORTED_KWARGS = {
 _MAX_RETRIES = 3
 _REQUEST_TIMEOUT = (20, 1200)
 _MANAGEMENT_TIMEOUT = (10, 60)
+_NOVA_3_MONOLINGUAL_PRICE_PER_MINUTE = 0.0077
+_NOVA_3_MULTILINGUAL_PRICE_PER_MINUTE = 0.0092
+_NOVA_3_DIARIZATION_PRICE_PER_MINUTE = 0.0020
 
 
 def transcribe(
@@ -117,8 +121,10 @@ def transcribe(
     options = _reject_unknown_kwargs(model, kwargs)
     primary_model = _clean_text(model) or "nova-2"
     _validate_model(primary_model)
-    resolved_fallback_model = _clean_text(options.pop("fallback_model", "whisper-large")) or "whisper-large"
-    _validate_model(resolved_fallback_model)
+    fallback_model = options.pop("fallback_model", None)
+    resolved_fallback_model = _clean_text(fallback_model) if fallback_model is not None else None
+    if resolved_fallback_model:
+        _validate_model(resolved_fallback_model)
     concurrency = options.pop("concurrency", MAX_CONCURRENT_NOVA_PRERECORDED)
     resolved_language = _clean_text(options.pop("language", None))
     paragraphs = bool(options.pop("paragraphs", True))
@@ -128,6 +134,7 @@ def transcribe(
     detect_entities = options.pop("detect_entities", None)
     language_mkd = options.pop("language_mkd", "en")
     provider_params = _normalize_extra_request_params(options)
+    diarize_enabled = _request_flag(provider_params.get("diarize"), default=True)
     should_detect_entities = bool(detect_entities)
     if detect_entities is None:
         should_detect_entities = resolved_language.lower().startswith("en") and not _is_whisper_model(primary_model)
@@ -159,7 +166,7 @@ def transcribe(
         request_ids.extend(primary_request_ids)
 
         if primary_error is not None:
-            if resolved_fallback_model == primary_model:
+            if not resolved_fallback_model or resolved_fallback_model == primary_model:
                 raise primary_error
             successful_model = resolved_fallback_model
             merged_result, fallback_request_ids, fallback_error = _transcribe_with_model(
@@ -184,13 +191,43 @@ def transcribe(
         audio_duration_seconds=audio_duration_seconds,
         model_name=successful_model,
         requested_language=resolved_language,
+        requested_model=primary_model,
+        fallback_model=resolved_fallback_model,
+        diarize=diarize_enabled,
+    )
+    cost_metadata = _resolve_deepgram_cost_metadata(
+        request_ids=request_ids,
+        model_name=successful_model,
+        audio_duration_seconds=audio_duration_seconds,
+        diarize=diarize_enabled,
     )
     return _build_transcription_bundle(
         raw_payload,
         language_mkd=language_mkd,
         request_id=request_ids,
-        cost_usd=_lookup_total_exact_cost(request_ids),
+        **cost_metadata,
     )
+
+
+def update_cost(result):
+    """Refresh Deepgram transcription cost metadata through Management/Usage lookup."""
+    if not isinstance(result, dict):
+        raise TypeError("audio.update_cost result must be a transcription result dictionary.")
+
+    cost_metadata = _resolve_deepgram_cost_metadata(
+        request_ids=result.get("request_id"),
+        model_name=result.get("model"),
+        audio_duration_seconds=_safe_float(result.get("duration"), 0.0) / 1000.0,
+        diarize=_request_flag(
+            ((result.get("provider_metadata") or {}).get("request_parameters") or {}).get("diarize"),
+            default=True,
+        ),
+    )
+    result["cost_usd"] = cost_metadata["cost_usd"]
+    result["cost_source"] = cost_metadata["cost_source"]
+    result["cost_is_estimated"] = cost_metadata["cost_is_estimated"]
+    result["cost_lookup_error"] = _sanitize_cost_lookup_error(cost_metadata["cost_lookup_error"])
+    return result
 
 def _get_api_key():
     """Returns the Deepgram API key from the environment."""
@@ -239,7 +276,7 @@ def _normalize_request_id_list(request_id):
     """Returns a deduplicated request-id list preserving input order."""
     if isinstance(request_id, str):
         request_items = [request_id]
-    elif isinstance(request_id, (list, tuple, set)):
+    elif isinstance(request_id, list | tuple | set):
         request_items = list(request_id)
     else:
         request_items = []
@@ -597,7 +634,15 @@ def _transcribe_with_model(
     return None, request_ids, runtime_error
 
 
-def _build_raw_transcription_payload(merged_result, audio_duration_seconds, model_name, requested_language=None):
+def _build_raw_transcription_payload(
+    merged_result,
+    audio_duration_seconds,
+    model_name,
+    requested_language=None,
+    requested_model=None,
+    fallback_model=None,
+    diarize=True,
+):
     """Builds the raw payload consumed by transcription post-processing."""
     result_root = (merged_result.get("results") or {}) if isinstance(merged_result, dict) else {}
     channels = result_root.get("channels", []) or [{}]
@@ -621,6 +666,10 @@ def _build_raw_transcription_payload(merged_result, audio_duration_seconds, mode
             "paragraphs": alternative.get("paragraphs"),
             "summary": result_root.get("summary"),
             "entities": alternative.get("entities"),
+            "requested_model": requested_model or model_name,
+            "actual_model": model_name,
+            "fallback_model": fallback_model,
+            "request_parameters": {"diarize": bool(diarize)},
         },
         result=merged_result,
     )
@@ -639,16 +688,40 @@ def _list_project_ids(session):
     return project_ids
 
 
+def _format_lookup_error(error):
+    """Builds a sanitized Deepgram lookup error string."""
+    response = getattr(error, "response", None)
+    if response is None:
+        return str(error or "Deepgram usage lookup failed.")
+
+    message = ""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            message = (
+                payload.get("err_msg")
+                or payload.get("message")
+                or payload.get("detail")
+                or str(payload.get("error") or "")
+            )
+    except ValueError:
+        message = str(response.text or "")
+    message = _clean_text(message)[:300]
+    if message:
+        return f"Deepgram usage lookup failed with HTTP {response.status_code}: {message}"
+    return f"Deepgram usage lookup failed with HTTP {response.status_code}."
+
+
 def _resolve_candidate_project_ids(session):
     """Returns project IDs to try when looking up exact request cost."""
     env_project_id = _clean_text(os.getenv("DEEPGRAM_PROJECT_ID"))
     if env_project_id:
-        return [env_project_id]
+        return [env_project_id], None
 
     try:
-        return _list_project_ids(session)
-    except requests.RequestException:
-        return []
+        return _list_project_ids(session), None
+    except requests.RequestException as error:
+        return [], _format_lookup_error(error)
 
 
 def _extract_exact_cost_from_lookup(lookup_payload):
@@ -678,42 +751,47 @@ def _extract_exact_cost_from_lookup(lookup_payload):
 def _lookup_exact_request_cost(session, candidate_project_ids, request_id):
     """Looks up the exact request cost for one request ID."""
     if not request_id or not candidate_project_ids:
-        return None
+        return None, "Deepgram usage lookup needs a project id and request id."
 
+    last_error = None
     for project_id in candidate_project_ids:
         url = f"https://api.deepgram.com/v1/projects/{project_id}/requests/{request_id}"
         try:
             response = session.get(url, timeout=_MANAGEMENT_TIMEOUT)
-        except requests.RequestException:
+        except requests.RequestException as error:
+            last_error = _format_lookup_error(error)
             continue
 
         if response.status_code == 404:
+            last_error = f"Deepgram request_id '{request_id}' was not found in the selected project."
             continue
         if response.status_code >= 400:
-            continue
+            return None, _format_lookup_error(requests.HTTPError(response=response))
 
         try:
             lookup_payload = response.json()
         except ValueError:
+            last_error = f"Deepgram usage lookup for request_id '{request_id}' returned invalid JSON."
             continue
 
         exact_cost = _extract_exact_cost_from_lookup(lookup_payload)
         if exact_cost is not None:
-            return exact_cost
+            return exact_cost, None
+        last_error = f"Deepgram usage lookup for request_id '{request_id}' did not include USD cost."
 
-    return None
+    return None, last_error or f"Deepgram usage lookup did not find request_id '{request_id}'."
 
 
 def _lookup_total_exact_cost(request_ids):
     """Returns the exact total Deepgram cost when every request lookup succeeds."""
     normalized_request_ids = _normalize_request_id_list(request_ids)
     if not normalized_request_ids:
-        return 0.0
+        return None, "No Deepgram request_id is available for cost lookup."
 
     try:
         api_key = _get_api_key()
-    except ValueError:
-        return 0.0
+    except ValueError as error:
+        return None, str(error)
 
     session = requests.Session()
     session.headers.update(
@@ -724,20 +802,94 @@ def _lookup_total_exact_cost(request_ids):
     )
 
     try:
-        candidate_project_ids = _resolve_candidate_project_ids(session)
+        candidate_project_ids, lookup_error = _resolve_candidate_project_ids(session)
         if not candidate_project_ids:
-            return 0.0
+            return None, lookup_error or "Deepgram usage lookup could not resolve a project id."
 
         exact_costs = {}
         for request_id in normalized_request_ids:
-            exact_cost = _lookup_exact_request_cost(session, candidate_project_ids, request_id)
+            exact_cost, lookup_error = _lookup_exact_request_cost(
+                session,
+                candidate_project_ids,
+                request_id,
+            )
             if exact_cost is None:
-                return 0.0
+                return None, lookup_error
             exact_costs[request_id] = exact_cost
 
-        return float(sum(exact_costs.values(), Decimal("0")))
+        return round_cost(float(sum(exact_costs.values(), Decimal("0")))), None
     finally:
         session.close()
+
+
+def _request_flag(value, *, default=False):
+    """Coerces provider-style truthy/falsey parameter values."""
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    normalized = _clean_text(value).lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(value)
+
+
+def _estimate_nova_3_cost(model_name, audio_duration_seconds, *, diarize=True):
+    """Calculates deterministic Nova-3 prerecorded cost from public pricing."""
+    normalized_model = _normalize_model_name(model_name)
+    if not normalized_model.startswith("nova-3"):
+        return None
+
+    price_per_minute = _NOVA_3_MULTILINGUAL_PRICE_PER_MINUTE
+    if normalized_model == "nova-3-medical":
+        price_per_minute = _NOVA_3_MONOLINGUAL_PRICE_PER_MINUTE
+    if diarize:
+        price_per_minute += _NOVA_3_DIARIZATION_PRICE_PER_MINUTE
+    return compute_cost_by_duration(
+        audio_duration_seconds,
+        unit_price=price_per_minute,
+        billing_unit="minute",
+    )
+
+
+def _resolve_deepgram_cost_metadata(
+    *,
+    request_ids,
+    model_name,
+    audio_duration_seconds,
+    diarize=True,
+):
+    """Resolves the public Deepgram transcription cost metadata contract."""
+    exact_cost, lookup_error = _lookup_total_exact_cost(request_ids)
+    if exact_cost is not None:
+        return {
+            "cost_usd": exact_cost,
+            "cost_source": "usage_lookup",
+            "cost_is_estimated": False,
+            "cost_lookup_error": None,
+        }
+
+    estimated_cost = _estimate_nova_3_cost(
+        model_name,
+        audio_duration_seconds,
+        diarize=diarize,
+    )
+    if estimated_cost is not None:
+        return {
+            "cost_usd": estimated_cost,
+            "cost_source": "official_pricing_table",
+            "cost_is_estimated": True,
+            "cost_lookup_error": lookup_error,
+        }
+
+    return {
+        "cost_usd": None,
+        "cost_source": "unavailable",
+        "cost_is_estimated": False,
+        "cost_lookup_error": lookup_error or "Deepgram exact usage lookup is required for this model family.",
+    }
 
 
 def _validate_model(model_name):
@@ -777,6 +929,6 @@ def _stringify_query_value(value):
     """Serialize booleans into Deepgram query-style lowercase values."""
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return [_stringify_query_value(item) for item in value]
     return value

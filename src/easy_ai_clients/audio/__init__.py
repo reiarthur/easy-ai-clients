@@ -1,8 +1,9 @@
 """Audio dispatcher.
 
-Exposes :func:`generate` for text-to-speech and :func:`transcribe` for
-speech-to-text. The provider is selected via the ``api`` keyword argument and
-must match the file name (without ``.py``) of an internal provider module.
+Exposes :func:`generate` for text-to-speech, :func:`transcribe` for
+speech-to-text, and :func:`update_cost` for supported post-hoc audio cost
+refreshes. The provider is selected via the ``api`` keyword argument and must
+match the file name (without ``.py``) of an internal provider module.
 
 Last updated: 2026-04-25
 """
@@ -15,6 +16,7 @@ from typing import Any
 __all__ = [
     "generate",
     "transcribe",
+    "update_cost",
     "available_synthesize_apis",
     "available_transcribe_apis",
 ]
@@ -35,7 +37,6 @@ _TRANSCRIBE_APIS = (
     "elevenlabs",
     "falai",
     "fireworks",
-    "revai",
     "speechmatics",
     "together",
 )
@@ -119,11 +120,25 @@ def transcribe(audio_input, model=None, *, api, **kwargs):
     - **kwargs: Extra provider-native parameters.
 
     ### Returns:
-    - dict: Normalized transcription bundle (text, words, segments, speakers,
-      cost, etc.).
+    - dict: Normalized transcription bundle with transcript data and explicit
+      cost metadata.
     """
 
     module = _load_transcribe(api)
     if model is None:
         return module.transcribe(audio_input, **kwargs)
     return module.transcribe(audio_input, model=model, **kwargs)
+
+
+def update_cost(operation, result, *, api):
+    """Refresh cost metadata for an audio result when the provider supports it."""
+
+    if operation != "transcribe":
+        raise ValueError("audio.update_cost currently supports operation='transcribe' only.")
+
+    module = _load_transcribe(api)
+    if not hasattr(module, "update_cost"):
+        raise NotImplementedError(
+            f"audio.update_cost is not implemented for operation='transcribe' and api='{api}'."
+        )
+    return module.update_cost(result)
