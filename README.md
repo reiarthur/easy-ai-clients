@@ -5,9 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/reiarthur/easy-ai-clients/blob/main/LICENSE)
 
 `easy-ai-clients` is a Python library that exposes one stable interface for
-text, audio, and image AI operations across multiple providers. Each public
-operation is selected with an explicit `api=` argument, so application code can
-switch providers without importing provider-specific modules.
+text, audio, image, and video AI operations across multiple providers. Each
+public operation is selected with an explicit `api=` argument, so application
+code can switch providers without importing provider-specific modules.
 
 The package is a library, not a hosted service. It makes outbound provider API
 calls only when you call one of the dispatchers.
@@ -34,7 +34,7 @@ Runtime dependencies are installed by `pip`: `requests`, `httpx`, `Pillow`,
 import base64
 
 from dotenv import load_dotenv
-from easy_ai_clients import audio, image, text
+from easy_ai_clients import audio, image, text, video
 
 load_dotenv()
 
@@ -66,6 +66,13 @@ analysis = image.analyze(
     api="openai",
 )
 print(analysis["output"])
+
+clip = video.generate(
+    "A smooth dolly shot through a bright paper airplane workshop.",
+    api="google",
+    duration_seconds=4,
+)
+print(clip["video_url"], "USD:", clip["cost_usd"])
 ```
 
 ## Public API
@@ -73,7 +80,7 @@ print(analysis["output"])
 Import the public dispatchers from the top-level package:
 
 ```python
-from easy_ai_clients import audio, image, text
+from easy_ai_clients import audio, image, text, video
 ```
 
 or from each submodule:
@@ -100,6 +107,12 @@ Supported operations:
 | `image` | `remix` | Reference-image guided generation | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
 | `image` | `analyze` | Vision and multimodal analysis | `anthropic`, `falai`, `fireworks`, `google`, `groq`, `openai`, `openrouter`, `together`, `xai` |
 | `image` | `update_cost` | Post-hoc cost refresh where implemented | `openrouter` |
+| `video` | `generate` / `text_to_video` | Prompt-only video generation | `falai`, `google`, `runway` |
+| `video` | `image_to_video` | Prompt + image video generation | `falai`, `google`, `runway` |
+| `video` | `motion_control` | Character or motion-reference video generation | `falai`, `runway` |
+| `video` | `image_lipsync` | Image/avatar + audio lip-sync video | `falai` |
+| `video` | `video_lipsync` | Source-video + audio lip-sync video | `falai` |
+| `video` | `get_status`, `get_result`, `download` | Async request helpers for video operations | matching operation provider |
 
 See the
 [provider matrix](https://github.com/reiarthur/easy-ai-clients/blob/main/docs/providers.md)
@@ -111,7 +124,7 @@ Every dispatcher requires `api=`. The value must match a supported provider
 identifier for that operation.
 
 ```python
-from easy_ai_clients import audio, image, text
+from easy_ai_clients import audio, image, text, video
 
 print(text.available_apis())
 print(audio.available_synthesize_apis())
@@ -120,6 +133,11 @@ print(image.available_generate_apis())
 print(image.available_edit_apis())
 print(image.available_remix_apis())
 print(image.available_analyze_apis())
+print(video.available_text_to_video_apis())
+print(video.available_image_to_video_apis())
+print(video.available_motion_control_apis())
+print(video.available_image_lipsync_apis())
+print(video.available_video_lipsync_apis())
 ```
 
 Provider modules under private `_apis` packages are implementation details.
@@ -238,6 +256,41 @@ Image inputs can be local file paths, public `http` / `https` URLs, raw base64
 image strings, or base64 data URLs. For `image.edit`, the public mask convention
 is black = editable and white = preserve.
 
+### Video
+
+```python
+from easy_ai_clients import video
+
+generated = video.generate(
+    "A clean product video of a blue compass app icon rotating on glass.",
+    api="google",
+    duration_seconds=4,
+    resolution="720p",
+)
+
+from_image = video.image_to_video(
+    "Subtle camera push-in with soft daylight.",
+    "input.png",
+    api="runway",
+    duration=5,
+)
+
+submitted = video.motion_control(
+    image="character.png",
+    video="motion-reference.mp4",
+    api="falai",
+    character_orientation="image",
+    duration_seconds=5,
+    sync=False,
+)
+status = video.get_status("motion_control", submitted["request_id"], api="falai")
+```
+
+Video media inputs accept local file paths, public `http` / `https` URLs, or
+data URLs. `sync=False` returns provider request IDs and queue/task metadata;
+use `video.get_status`, `video.get_result`, or `video.download` with the same
+operation and provider.
+
 ## Return Contracts
 
 | Operation | Normalized result |
@@ -247,6 +300,7 @@ is black = editable and white = preserve.
 | `audio.transcribe(...)` | `text`, optional `words` / `segments` / `silences`, speaker metadata, `provider_metadata`, `request_id`, `cost_usd`, `cost_source`, `cost_is_estimated`, `cost_lookup_error`, optional `mkd` |
 | `image.generate(...)`, `image.edit(...)`, `image.remix(...)` | `cust_usd`, `base64`, `warnings`, `request_id` |
 | `image.analyze(...)` | `request_id`, `cost_usd`, `input_text`, `output` |
+| `video.generate(...)`, `video.text_to_video(...)`, `video.image_to_video(...)`, `video.motion_control(...)`, `video.image_lipsync(...)`, `video.video_lipsync(...)` | `provider`, `model`, `status`, `request_id`, `video_url`, `output_path`, `cost_usd`, `cost_is_estimated`, `cost_source`, `raw_response` |
 
 The image generation/edit/remix cost key is intentionally `cust_usd` for the
 current public contract.
@@ -288,11 +342,13 @@ Cost values are best-effort normalized USD values:
 - Some providers return exact usage or request cost.
 - Some adapters compute cost from usage fields and local pricing tables.
 - Some router/provider costs can be refined after the call.
+- Video adapters currently report estimated cost from provider pricing tables
+  and validated duration/resolution parameters.
 - For transcription, unknown cost is `None`, not `0.0`; inspect
   `cost_source`, `cost_is_estimated`, and `cost_lookup_error`.
 
 ```python
-from easy_ai_clients import audio, image, text
+from easy_ai_clients import audio, image, text, video
 
 text_result = text.generate("ping", api="openrouter")
 text_result = text.update_cost(text_result, api="openrouter")
@@ -302,6 +358,9 @@ image_result = image.update_cost("generate", image_result, api="openrouter")
 
 transcript = audio.transcribe("meeting.mp3", api="deepgram")
 transcript = audio.update_cost("transcribe", transcript, api="deepgram")
+
+video_result = video.generate("a four-second product shot", api="google")
+print(video_result["cost_is_estimated"])
 ```
 
 ## Errors

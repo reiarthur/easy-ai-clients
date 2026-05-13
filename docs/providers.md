@@ -116,3 +116,40 @@ underlying API expects.
 | `openrouter` | `OPENROUTER_API_KEY` | [`openrouter`](image/analyze/openrouter.md) |
 | `together` | `TOGETHER_API_KEY` | [`together`](image/analyze/together.md) |
 | `xai` | `XAI_API_KEY` | [`xai`](image/analyze/xai.md) |
+
+## Video - `easy_ai_clients.video`
+
+### `video.generate(...)` / `video.text_to_video(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `falai` | `FAL_KEY` | [`falai`](video/text_to_video/falai.md) |
+| `google` | `GOOGLE_API_KEY` | [`google`](video/text_to_video/google.md) |
+| `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/text_to_video/runway.md) |
+
+### `video.image_to_video(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `falai` | `FAL_KEY` | [`falai`](video/image_to_video/falai.md) |
+| `google` | `GOOGLE_API_KEY` | [`google`](video/image_to_video/google.md) |
+| `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/image_to_video/runway.md) |
+
+### `video.motion_control(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `falai` | `FAL_KEY` | [`falai`](video/motion_control/falai.md) |
+| `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/motion_control/runway.md) |
+
+### `video.image_lipsync(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `falai` | `FAL_KEY` | [`falai`](video/image_lipsync/falai.md) |
+
+### `video.video_lipsync(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `falai` | `FAL_KEY` | [`falai`](video/video_lipsync/falai.md) |

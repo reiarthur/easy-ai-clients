@@ -3,6 +3,29 @@
 All notable changes to **easy-ai-clients** are documented in this file.
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.0 - 2026-05-13
+
+### Added
+
+- Added `easy_ai_clients.video` with dispatchers for text-to-video,
+  image-to-video, motion-control, image lip-sync, and video lip-sync workflows.
+- Added video providers for Fal.ai, Google Veo, and Runway where provider
+  adapters are implemented, plus async status/result/download helpers.
+- Added video provider documentation, environment variable references, tests,
+  and package metadata updates for publishing.
+
+### Changed
+
+- Corrected Google Veo validation and payload generation to match current
+  documented duration, resolution, person-generation, image, last-frame, and
+  per-request video limits.
+- Corrected Fal.ai text-to-video seed/frame-rate support and video URL
+  extraction for Fal.ai responses that return `video` as a direct string.
+- Corrected the fal.ai InfiniteTalk video lip-sync `num_frames` validation
+  range to follow the embedded source-video plus audio request schema.
+- Added contract-level video payload, docs/env consistency, and gated live
+  smoke tests.
+
 ## 0.5.0 - 2026-05-11
 
 ### Changed

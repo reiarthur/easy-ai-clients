@@ -30,9 +30,10 @@ $env:DEEPGRAM_API_KEY = "..."
 ```
 
 Some current text and image helpers attempt to load a `.env` file from the
-current working directory before resolving credentials. Audio helpers read the
-process environment directly. Because this behavior is not uniform across every
-adapter, application code should load `.env` explicitly when it depends on one.
+current working directory before resolving credentials. Audio and video helpers
+read the process environment directly. Because this behavior is not uniform
+across every adapter, application code should load `.env` explicitly when it
+depends on one.
 
 Never commit a real `.env` file. Use the repository template:
 
@@ -50,18 +51,22 @@ Never commit a real `.env` file. Use the repository template:
 | `DEEPINFRA_API_KEY` | `text.generate(api="deepinfra")`, `audio.generate(api="deepinfra")` |
 | `DEEPSEEK_API_KEY` | `text.generate(api="deepseek")` |
 | `ELEVENLABS_API_KEY` | `audio.generate(api="elevenlabs")`, `audio.transcribe(api="elevenlabs")` |
-| `FAL_KEY` | `text.generate(api="falai")`, `audio.transcribe(api="falai")`, image operations using `api="falai"` |
+| `FAL_KEY` | `text.generate(api="falai")`, `audio.transcribe(api="falai")`, image operations using `api="falai"`, and video operations using `api="falai"` |
 | `FIREWORKS_API_KEY` | Fireworks text, audio transcription, and image operations |
-| `GOOGLE_API_KEY` | Google text, audio generation, and image operations |
+| `GOOGLE_API_KEY` | Google text, audio generation, image operations, and Google Veo video operations |
 | `GROQ_API_KEY` | `text.generate(api="groq")`, `image.analyze(api="groq")` |
 | `HUGGINGFACE_API_KEY` | `text.generate(api="huggingface")` |
 | `MISTRAL_API_KEY` | `text.generate(api="mistral")`, `audio.generate(api="mistral")` |
 | `OPENAI_API_KEY` | OpenAI text, audio, and image operations |
 | `OPENROUTER_API_KEY` | OpenRouter operations and some catalog/cost lookup paths |
+| `RUNWAYML_API_SECRET` | Runway video operations |
 | `SPEECHMATICS_API_KEY` | `audio.transcribe(api="speechmatics")` |
 | `STABILITY_API_KEY` | `image.generate / edit / remix(api="stability")` |
 | `TOGETHER_API_KEY` | Together text, audio, and image operations |
 | `XAI_API_KEY` | xAI text, audio, and image operations |
+
+`HEDRA_API_KEY` is included in `.env.example` as a reserved video variable for
+future Hedra adapters. No current public dispatcher uses it.
 
 ## Missing Credentials
 

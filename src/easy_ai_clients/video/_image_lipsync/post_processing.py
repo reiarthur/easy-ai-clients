@@ -1,0 +1,10 @@
+"""Common image lip-sync result helpers."""
+
+from .._shared import download_file, normalize_result
+
+
+def build_result(provider, model, status, request_id, video_url, output_path, cost_usd, cost_is_estimated, cost_source, raw_response, extra=None):
+    saved_path = output_path
+    if video_url and output_path and status == "completed":
+        saved_path = download_file(video_url, output_path)
+    return normalize_result(provider, model, status, request_id, video_url, saved_path, cost_usd, cost_is_estimated, cost_source, raw_response, extra)

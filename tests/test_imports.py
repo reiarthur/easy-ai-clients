@@ -13,6 +13,7 @@ def test_top_level_exports():
     assert hasattr(easy_ai_clients, "text")
     assert hasattr(easy_ai_clients, "audio")
     assert hasattr(easy_ai_clients, "image")
+    assert hasattr(easy_ai_clients, "video")
     assert isinstance(easy_ai_clients.__version__, str)
 
 
@@ -42,6 +43,25 @@ def test_image_dispatchers_callable():
     assert callable(image.edit)
     assert callable(image.remix)
     assert callable(image.analyze)
+
+
+def test_video_dispatchers_callable():
+    from easy_ai_clients import video
+
+    assert callable(video.generate)
+    assert callable(video.text_to_video)
+    assert callable(video.image_to_video)
+    assert callable(video.motion_control)
+    assert callable(video.image_lipsync)
+    assert callable(video.video_lipsync)
+    assert callable(video.get_status)
+    assert callable(video.get_result)
+    assert callable(video.download)
+    assert isinstance(video.available_text_to_video_apis(), tuple)
+    assert isinstance(video.available_image_to_video_apis(), tuple)
+    assert isinstance(video.available_motion_control_apis(), tuple)
+    assert isinstance(video.available_image_lipsync_apis(), tuple)
+    assert isinstance(video.available_video_lipsync_apis(), tuple)
 
 
 @pytest.mark.parametrize(
@@ -76,6 +96,11 @@ def test_image_dispatchers_callable():
             "anthropic", "falai", "fireworks", "google", "groq",
             "openai", "openrouter", "together", "xai",
         )),
+        ("video", "_text_to_video._apis", ("falai", "google", "runway")),
+        ("video", "_image_to_video._apis", ("falai", "google", "runway")),
+        ("video", "_motion_control._apis", ("falai", "runway")),
+        ("video", "_image_lipsync._apis", ("falai",)),
+        ("video", "_video_lipsync._apis", ("falai",)),
     ],
 )
 def test_provider_modules_import(modality, operation, providers):
@@ -86,7 +111,7 @@ def test_provider_modules_import(modality, operation, providers):
 
 
 def test_unknown_api_raises():
-    from easy_ai_clients import audio, image, text
+    from easy_ai_clients import audio, image, text, video
 
     with pytest.raises(ValueError):
         text.generate("hi", api="bogus")
@@ -102,6 +127,16 @@ def test_unknown_api_raises():
         image.remix("hi", ["img.png"], api="bogus")
     with pytest.raises(ValueError):
         image.analyze("hi", "img.png", api="bogus")
+    with pytest.raises(ValueError):
+        video.generate("hi", api="bogus")
+    with pytest.raises(ValueError):
+        video.image_to_video("hi", "img.png", api="bogus")
+    with pytest.raises(ValueError):
+        video.motion_control(image="img.png", video="motion.mp4", api="bogus")
+    with pytest.raises(ValueError):
+        video.image_lipsync(image="img.png", audio="voice.wav", api="bogus")
+    with pytest.raises(ValueError):
+        video.video_lipsync(video="speaker.mp4", audio="voice.wav", api="bogus")
 
 
 def test_missing_api_raises():

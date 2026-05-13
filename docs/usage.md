@@ -7,7 +7,7 @@ by applications.
 ## Imports
 
 ```python
-from easy_ai_clients import audio, image, text
+from easy_ai_clients import audio, image, text, video
 ```
 
 Direct submodule imports are also supported:
@@ -17,6 +17,7 @@ from easy_ai_clients.text import generate as text_generate
 from easy_ai_clients.audio import generate as speech_generate
 from easy_ai_clients.audio import transcribe
 from easy_ai_clients.image import analyze
+from easy_ai_clients.video import text_to_video
 ```
 
 ## Provider Selection
@@ -25,7 +26,7 @@ Every operation requires `api=`. Use the discovery helpers to inspect supported
 provider identifiers:
 
 ```python
-from easy_ai_clients import audio, image, text
+from easy_ai_clients import audio, image, text, video
 
 text.available_apis()
 audio.available_synthesize_apis()
@@ -34,6 +35,11 @@ image.available_generate_apis()
 image.available_edit_apis()
 image.available_remix_apis()
 image.available_analyze_apis()
+video.available_text_to_video_apis()
+video.available_image_to_video_apis()
+video.available_motion_control_apis()
+video.available_image_lipsync_apis()
+video.available_video_lipsync_apis()
 ```
 
 ## Text Generation
@@ -197,6 +203,50 @@ Return keys:
 - `input_text`
 - `output`
 
+## Video Generation
+
+```python
+from easy_ai_clients import video
+
+generated = video.generate(
+    "A four-second cinematic shot of a paper airplane crossing a studio desk.",
+    api="google",
+    duration_seconds=4,
+    resolution="720p",
+)
+
+from_image = video.image_to_video(
+    "Slow push-in with natural motion.",
+    "input.png",
+    api="runway",
+    duration=5,
+)
+
+talking_avatar = video.image_lipsync(
+    image="avatar.png",
+    audio="voice.wav",
+    api="falai",
+)
+```
+
+Common return keys include:
+
+- `provider`
+- `model`
+- `status`
+- `request_id`
+- `video_url`
+- `output_path`
+- `cost_usd`
+- `cost_is_estimated`
+- `cost_source`
+- `raw_response`
+
+Supported video media inputs are local paths, public `http` / `https` URLs, and
+data URLs. When `sync=False`, the dispatcher returns submitted queue/task
+metadata; pass the same operation name to `video.get_status`,
+`video.get_result`, or `video.download`.
+
 ## Provider-Native Kwargs
 
 Extra keyword arguments are provider-native. Use the provider docs for accepted
@@ -227,7 +277,7 @@ inside `warnings` to preserve the normalized return shape.
 ## Cost Updates
 
 ```python
-from easy_ai_clients import audio, image, text
+from easy_ai_clients import audio, image, text, video
 
 text_result = text.generate("ping", api="openrouter")
 text_result = text.update_cost(text_result, api="openrouter")
@@ -237,7 +287,11 @@ image_result = image.update_cost("generate", image_result, api="openrouter")
 
 transcript = audio.transcribe("speech.mp3", api="deepgram")
 transcript = audio.update_cost("transcribe", transcript, api="deepgram")
+
+video_result = video.generate("a short product clip", api="google")
+print(video_result["cost_is_estimated"])
 ```
 
 Cost helpers raise `NotImplementedError` when the selected provider does not
-support post-hoc cost lookup.
+support post-hoc cost lookup. Video adapters currently return estimated costs
+from provider pricing tables and validated generation parameters.

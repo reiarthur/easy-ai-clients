@@ -35,6 +35,11 @@ To run a specific file:
 pytest tests/test_imports.py -v
 ```
 
+Paid integration smoke tests are gated by explicit environment variables and
+provider credentials. For video, set `EASY_AI_CLIENTS_LIVE_VIDEO=1` plus the
+credentials for the providers you want to exercise. The current video smoke
+budget is guarded at US$ 1.00.
+
 ## Linting
 
 ```bash
@@ -51,7 +56,7 @@ ruff check --fix src tests
 
 ```
 src/easy_ai_clients/
-├── __init__.py            # Top-level package: re-exports text, audio, image, __version__
+├── __init__.py            # Top-level package: re-exports text, audio, image, video, __version__
 ├── py.typed
 ├── text/
 │   ├── __init__.py        # Text generate dispatcher
@@ -62,25 +67,33 @@ src/easy_ai_clients/
 │   ├── __init__.py        # Audio generate / transcribe dispatchers
 │   ├── _synthesize/...    # PRIVATE TTS providers
 │   └── _transcribe/...    # PRIVATE STT providers
-└── image/
+├── image/
     ├── __init__.py        # Image generate / edit / remix / analyze dispatchers
     ├── _common/           # PRIVATE shared image helpers (HTTP, cost, mask, etc.)
     ├── _generate/...      # PRIVATE image generation providers
     ├── _edit/...
     ├── _remix/...
     └── _analyze/...
+└── video/
+    ├── __init__.py        # Video generation dispatchers and async helpers
+    ├── _shared/           # PRIVATE shared video helpers
+    ├── _text_to_video/...
+    ├── _image_to_video/...
+    ├── _motion_control/...
+    ├── _image_lipsync/...
+    └── _video_lipsync/...
 ```
 
 Anything starting with `_` is internal. The only stable surface is what is
-explicitly exported from `easy_ai_clients.text`, `easy_ai_clients.audio`, and
-`easy_ai_clients.image`.
+explicitly exported from `easy_ai_clients.text`, `easy_ai_clients.audio`,
+`easy_ai_clients.image`, and `easy_ai_clients.video`.
 
 ## Adding a new provider
 
 1. Pick a short, lowercase identifier matching the file name (e.g. `groq`).
 2. Drop the new module under the appropriate `_apis/` directory and expose a
    public function with the operation's standard signature
-   (`generate`, `edit`, `remix`, `analyze`, or `transcribe`).
+   (`generate`, `edit`, `remix`, `analyze`, `transcribe`, or a video operation).
 3. Register the new identifier in the dispatcher's tuple inside the operation
    `__init__.py` (e.g. `_AVAILABLE_APIS` for `text`, `_GENERATE_APIS` for
    `image.generate`).
