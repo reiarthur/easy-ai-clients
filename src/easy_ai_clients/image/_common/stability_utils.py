@@ -75,14 +75,11 @@ def _handle_stability_image_response(response, *, operation):
 
 
 def _stability_model_config(model_map, model, operation):
-    """Resolve o endpoint/custo do modelo configurado para a operação."""
+    """Resolve documented endpoint/cost metadata without blocking unknown models."""
 
     config = model_map.get(model)
     if config is None:
-        supported = ", ".join(f"`{item}`" for item in model_map)
-        return None, (
-            f"This Stability AI `{operation}` wrapper currently supports only {supported}."
-        )
+        return {"path": str(model).strip(), "cost": Decimal("0")}, ""
     return config, ""
 
 

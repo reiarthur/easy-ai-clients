@@ -14,7 +14,6 @@ from .._apis._shared import (
     pcm_to_wav_bytes,
     reject_unknown_kwargs,
     request_with_retries,
-    response_json,
     round_cost,
     validate_choice,
 )
@@ -37,7 +36,7 @@ GUIDE_URL = "https://docs.together.ai/docs/text-to-speech"
 CATALOG_URL = "https://docs.together.ai/docs/serverless-models"
 PRICING_URL = "https://docs.together.ai/docs/serverless-models"
 
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "canopylabs/orpheus-3b-0.1-ft": {
         "usd_per_million_chars": 15.0,
         "default_voice": "tara",
@@ -99,7 +98,7 @@ LANGUAGES = {"en", "de", "fr", "es", "hi", "it", "ja", "ko", "nl", "pl", "pt", "
 RESPONSE_FORMATS = {"mp3", "wav", "raw", "mulaw", "opus", "aac", "flac"}
 RESPONSE_ENCODINGS = {"pcm_f32le", "pcm_s16le", "pcm_mulaw", "pcm_alaw"}
 BIT_RATES = {32000, 64000, 96000, 128000, 192000}
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "response_format",
     "response_encoding",
     "sample_rate",
@@ -111,6 +110,11 @@ SUPPORTED_KWARGS = {
 }
 DEFAULT_MODEL = "hexgrad/Kokoro-82M"
 DEFAULT_VOICE = "af_alloy"
+_UNKNOWN_MODEL_METADATA = {
+    "usd_per_million_chars": 0.0,
+    "default_voice": DEFAULT_VOICE,
+    "operational_char_limit": 2000,
+}
 
 
 def generate(
@@ -121,11 +125,9 @@ def generate(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Generate speech with Together AI TTS. See `synthesize/docs/together.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported Together TTS model '{model}'. Supported models: {supported}.")
-
-    options = reject_unknown_kwargs("Together", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("Together", model, kwargs, DOCUMENTED_KWARGS)
     response_format = str(options.pop("response_format", "raw")).strip().lower()
     response_encoding = str(options.pop("response_encoding", "pcm_s16le")).strip().lower()
     sample_rate = int(options.pop("sample_rate", 24000))
@@ -139,11 +141,8 @@ def generate(
     if bit_rate is not None:
         bit_rate = int(bit_rate)
         validate_choice(bit_rate, BIT_RATES, parameter_name="bit_rate", provider="Together", model=model)
-    if alignment not in {"word", "none"}:
-        raise ValueError("Together alignment must be 'word' or 'none'.")
 
     api_key = ensure_env_var("TOGETHER_API_KEY")
-    model_config = SUPPORTED_MODELS[model]
     resolved_language = resolve_language_code(normalize_language_code(language_code))
     validate_choice(resolved_language, LANGUAGES, parameter_name="language_code", provider="Together", model=model)
     chosen_voice = _resolve_voice(api_key, model, voice)
@@ -169,6 +168,9 @@ def generate(
         if stream and alignment == "word":
             request_payload["alignment"] = "word"
             request_payload["segment"] = segment
+        elif alignment:
+            request_payload["alignment"] = alignment
+        request_payload.update({key: value for key, value in options.items() if value is not None})
 
         response = request_with_retries(
             "POST",
@@ -227,40 +229,19 @@ def generate(
         )
 
     result = _finalize_synthesis_output(chunk_records, cost_usd=0.0)
-    if not result["words"]:
-        raise ValueError(f"Together model '{model}' did not yield usable word timestamps.")
-    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost)
+    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost) if documented_model else 0.0
+    if not documented_model:
+        result["warnings"] = f"No documented pricing metadata is available for Together model `{model}`."
     return result
 
 
 def _resolve_voice(api_key: str, model: str, voice: str) -> str:
     """Resolve and validate a Together voice for the selected model."""
-    model_default = str(SUPPORTED_MODELS[model]["default_voice"]).strip()
+    model_default = str(DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)["default_voice"]).strip()
     chosen_voice = str(voice or "").strip() or model_default
     if model != DEFAULT_MODEL and chosen_voice == DEFAULT_VOICE:
         chosen_voice = model_default
-    if chosen_voice == model_default:
-        return chosen_voice
-
-    response = request_with_retries(
-        "GET",
-        VOICES_URL,
-        headers={"Authorization": f"Bearer {api_key}"},
-        timeout=(10.0, 60.0),
-    )
-    payload = response_json(response)
-    for entry in payload.get("data") or []:
-        if not isinstance(entry, dict) or entry.get("model") != model:
-            continue
-        voices = {str(item.get("name") or "").strip() for item in entry.get("voices") or [] if isinstance(item, dict)}
-        if chosen_voice in voices:
-            return chosen_voice
-        preview = ", ".join(sorted(list(voices))[:20])
-        raise ValueError(
-            f"Unsupported Together voice '{chosen_voice}' for model '{model}'. "
-            f"Use one of the provider voices for that model, for example: {preview}."
-        )
-    raise ValueError(f"Together voice catalog did not include model '{model}'.")
+    return chosen_voice
 
 
 __all__ = [
@@ -273,7 +254,7 @@ __all__ = [
     "PRICING_URL",
     "RESPONSE_ENCODINGS",
     "RESPONSE_FORMATS",
-    "SUPPORTED_MODELS",
+    "DOCUMENTED_MODELS",
     "VOICES_URL",
     "generate",
 ]

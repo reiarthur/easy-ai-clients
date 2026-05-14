@@ -1,0 +1,1 @@
+"""Avatar creation operation package."""

@@ -15,11 +15,14 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import requests
+
 FAL_QUEUE_BASE_URL = "https://queue.fal.run"
 FAL_API_BASE_URL = "https://api.fal.ai/v1"
 RUNWAY_BASE_URL = "https://api.dev.runwayml.com"
 RUNWAY_API_VERSION = "2024-11-06"
 GOOGLE_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+HEDRA_BASE_URL = "https://api.hedra.com/web-app/public"
 
 
 def require_env(name, provider):
@@ -141,10 +144,12 @@ def download_file(url, output_path, headers=None, timeout_seconds=None):
 
 
 def normalize_result(provider, model, status=None, request_id=None, video_url=None, output_path=None, cost_usd=None, cost_is_estimated=True, cost_source=None, raw_response=None, extra=None):
+    warnings = []
     if cost_usd is None:
-        raise RuntimeError(f"Cost calculation uncertainty for {provider} {model}.")
+        cost_usd = 0.0
+        warnings.append(f"No documented pricing metadata is available for {provider} {model}.")
     if cost_source is None:
-        raise RuntimeError(f"cost_source is required for {provider} {model}.")
+        cost_source = "unavailable"
     result = {
         "provider": provider,
         "model": model,
@@ -159,35 +164,28 @@ def normalize_result(provider, model, status=None, request_id=None, video_url=No
     }
     if extra:
         result.update(dict(extra))
+    if warnings:
+        existing = str(result.get("warnings") or "").strip()
+        joined = "; ".join([existing, *warnings] if existing else warnings)
+        result["warnings"] = joined
     return result
 
 
 def validate_allowed_kwargs(kwargs, allowed_names, model, provider, context, common_names=None):
-    common = set(common_names or [])
-    unsupported = []
-    for name in kwargs:
-        if name in allowed_names or name in common:
-            continue
-        unsupported.append(name)
-    if unsupported:
-        joined = ", ".join(sorted(unsupported))
-        raise ValueError(f"Unsupported parameter(s) for {provider} {context} model {model}: {joined}.")
+    return None
 
 
 def validate_enum(name, value, allowed_values, provider, model):
-    if value is None:
-        return
-    if str(value) not in set(allowed_values):
-        joined = ", ".join(str(item) for item in allowed_values)
-        raise ValueError(f"Invalid {name} for {provider} model {model}: {value}. Allowed values: {joined}.")
+    return value
 
 
 def validate_number(name, value, minimum, maximum, provider, model):
     if value is None:
-        return
-    parsed = float(value)
-    if parsed < minimum or parsed > maximum:
-        raise ValueError(f"Invalid {name} for {provider} model {model}: {value}. Expected {minimum} to {maximum}.")
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
 
 
 def merge_extra_payload(payload, kwargs):
@@ -217,6 +215,33 @@ def fal_submit(model, payload, api_key, timeout_seconds=None):
         payload=payload,
         timeout_seconds=timeout_seconds,
     )
+
+
+def fal_estimate_unit_price(model, unit_quantity, api_key, timeout_seconds=None):
+    quantity = float(unit_quantity)
+    payload = {
+        "estimate_type": "unit_price",
+        "endpoints": {model: {"unit_quantity": quantity}},
+    }
+    raw = http_json(
+        "POST",
+        FAL_API_BASE_URL + "/models/pricing/estimate",
+        headers=fal_headers(api_key),
+        payload=payload,
+        timeout_seconds=timeout_seconds,
+    )
+    if "total_cost" not in raw:
+        raise RuntimeError("fal.ai pricing estimate did not return total_cost.")
+    return {
+        "cost_usd": float(raw["total_cost"]),
+        "cost_is_estimated": True,
+        "cost_source": "fal_pricing_estimate_api",
+        "cost_reason": (
+            "fal.ai pricing estimate API was used with caller-supplied unit_quantity; "
+            "live generation usage reconciliation is not performed."
+        ),
+        "pricing_estimate": raw,
+    }
 
 
 def fal_status_url(model, request_id):
@@ -327,6 +352,48 @@ def runway_submit(endpoint, payload, api_key, timeout_seconds=None):
     )
 
 
+def runway_upload_file(path, api_key, timeout_seconds=None):
+    resolved = resolve_existing_file(path, "upload_path")
+    filename = Path(resolved).name
+    create_response = runway_submit(
+        "/v1/uploads",
+        {"filename": filename, "type": "ephemeral"},
+        api_key,
+        timeout_seconds=timeout_seconds,
+    )
+    upload_url = create_response.get("uploadUrl")
+    fields = create_response.get("fields")
+    runway_uri = create_response.get("runwayUri") or create_response.get("uri")
+    if not upload_url or not isinstance(fields, dict) or not runway_uri:
+        raise RuntimeError("Runway upload creation did not return uploadUrl, fields, and runwayUri.")
+    mime_type = mimetypes.guess_type(resolved)[0] or "application/octet-stream"
+    timeout = float(timeout_seconds or 120)
+    with open(resolved, "rb") as handle:
+        response = requests.post(
+            upload_url,
+            data=fields,
+            files={"file": (filename, handle, mime_type)},
+            timeout=timeout,
+        )
+    if response.status_code >= 400:
+        message = compact_whitespace(response.text[:1200]) or response.reason
+        raise RuntimeError(f"Runway file upload failed with HTTP {response.status_code}: {message}")
+    return runway_uri
+
+
+def runway_media_uri(path, url, path_name, url_name, api_key, timeout_seconds=None):
+    if path and url:
+        raise ValueError(f"Provide either {path_name} or {url_name}, not both.")
+    if url:
+        value = str(url).strip()
+        if not value:
+            raise ValueError(f"{url_name} cannot be empty.")
+        return value
+    if path:
+        return runway_upload_file(path, api_key, timeout_seconds=timeout_seconds)
+    return None
+
+
 def runway_get_task(task_id, api_key, timeout_seconds=None):
     return http_json("GET", RUNWAY_BASE_URL + "/v1/tasks/" + urllib.parse.quote(str(task_id), safe=""), headers=runway_headers(api_key), timeout_seconds=timeout_seconds)
 
@@ -407,3 +474,105 @@ def google_wait_for_operation(operation_name, api_key, timeout_seconds=None, pol
             return last_status
         time.sleep(max(1, interval))
     raise TimeoutError(f"Google Veo operation {operation_name} timed out. Last status: {last_status}")
+
+
+def hedra_headers(api_key, content_type="application/json"):
+    headers = {"X-API-Key": api_key}
+    if content_type:
+        headers["Content-Type"] = content_type
+    return headers
+
+
+def hedra_json(method, path, api_key, payload=None, timeout_seconds=None):
+    return http_json(
+        method,
+        HEDRA_BASE_URL + path,
+        headers=hedra_headers(api_key),
+        payload=payload,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def hedra_create_asset(name, asset_type, api_key, timeout_seconds=None):
+    payload = {"name": name, "type": asset_type}
+    raw = hedra_json("POST", "/assets", api_key, payload=payload, timeout_seconds=timeout_seconds)
+    asset_id = raw.get("id")
+    if not asset_id:
+        raise RuntimeError(f"Hedra asset creation for {name} did not return an asset id.")
+    return asset_id
+
+
+def hedra_upload_asset(asset_id, path, api_key, timeout_seconds=None):
+    resolved = resolve_existing_file(path, "asset_path")
+    timeout = float(timeout_seconds or 120)
+    url = HEDRA_BASE_URL + "/assets/" + urllib.parse.quote(str(asset_id), safe="") + "/upload"
+    with open(resolved, "rb") as handle:
+        response = requests.post(
+            url,
+            headers={"X-API-Key": api_key},
+            files={"file": (Path(resolved).name, handle)},
+            timeout=timeout,
+        )
+    if response.status_code >= 400:
+        message = compact_whitespace(response.text[:1200]) or response.reason
+        raise RuntimeError(f"Hedra asset upload failed with HTTP {response.status_code}: {message}")
+    if not response.content:
+        return {}
+    return response.json()
+
+
+def hedra_upload_local_asset(path, asset_type, api_key, timeout_seconds=None):
+    resolved = resolve_existing_file(path, "asset_path")
+    asset_id = hedra_create_asset(Path(resolved).name, asset_type, api_key, timeout_seconds)
+    hedra_upload_asset(asset_id, resolved, api_key, timeout_seconds)
+    return asset_id
+
+
+def normalize_hedra_status(value):
+    status = str(value or "").lower()
+    if status == "complete":
+        return "completed"
+    if status in ("processing", "finalizing"):
+        return "running"
+    if status == "queued":
+        return "queued"
+    if status == "error":
+        return "failed"
+    if status in ("canceled", "cancelled"):
+        return "canceled"
+    return "submitted"
+
+
+def hedra_get_generation_status(generation_id, api_key, timeout_seconds=None):
+    return hedra_json(
+        "GET",
+        "/generations/" + urllib.parse.quote(str(generation_id), safe="") + "/status",
+        api_key,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def hedra_wait_for_result(generation_id, api_key, timeout_seconds=None, poll_interval_seconds=None):
+    deadline = time.monotonic() + float(timeout_seconds or 1800)
+    interval = float(poll_interval_seconds or 10)
+    last_status = {}
+    while time.monotonic() < deadline:
+        last_status = hedra_get_generation_status(generation_id, api_key, timeout_seconds=60)
+        normalized = normalize_hedra_status(last_status.get("status"))
+        if normalized == "completed":
+            return last_status
+        if normalized in ("failed", "canceled"):
+            raise RuntimeError(f"Hedra generation {generation_id} ended with status {last_status}.")
+        time.sleep(max(1, interval))
+    raise TimeoutError(f"Hedra generation {generation_id} timed out. Last status: {last_status}")
+
+
+def hedra_extract_video_url(response):
+    if not isinstance(response, dict):
+        return None
+    return (
+        response.get("download_url")
+        or response.get("url")
+        or response.get("streaming_url")
+        or extract_video_url(response)
+    )

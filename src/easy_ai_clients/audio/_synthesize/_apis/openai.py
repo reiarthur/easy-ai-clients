@@ -25,7 +25,7 @@ MODELS_URL = "https://platform.openai.com/docs/api-reference/audio/create-speech
 CATALOG_URL = "https://platform.openai.com/docs/models/gpt-4o-mini-tts"
 PRICING_URL = "https://platform.openai.com/docs/pricing/"
 
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "tts-1": {
         "pricing_mode": "characters",
         "usd_per_million_chars": 15.0,
@@ -74,12 +74,20 @@ CLASSIC_VOICES = {"alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sag
 OMNI_VOICES = CLASSIC_VOICES | {"ballad", "verse", "marin", "cedar"}
 RESPONSE_FORMATS = {"mp3", "opus", "aac", "flac", "wav", "pcm"}
 STREAM_FORMATS = {"audio", "sse"}
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "response_format",
     "speed",
     "instructions",
     "stream_format",
     "timeout_seconds",
+}
+
+_UNKNOWN_MODEL_METADATA = {
+    "pricing_mode": "unknown",
+    "usd_per_million_chars": 0.0,
+    "usd_per_minute_estimate": 0.0,
+    "operational_char_limit": 1800,
+    "voice_set": "omni",
 }
 
 
@@ -91,11 +99,9 @@ def generate(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Generate speech with OpenAI TTS. See `synthesize/docs/openai.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported OpenAI TTS model '{model}'. Supported models: {supported}.")
-
-    options = reject_unknown_kwargs("OpenAI", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("OpenAI", model, kwargs, DOCUMENTED_KWARGS)
     response_format = str(options.pop("response_format", "mp3")).strip().lower()
     speed = validate_number_range(
         options.pop("speed", 1.0),
@@ -111,17 +117,10 @@ def generate(
 
     validate_choice(response_format, RESPONSE_FORMATS, parameter_name="response_format", provider="OpenAI", model=model)
     validate_choice(stream_format, STREAM_FORMATS, parameter_name="stream_format", provider="OpenAI", model=model)
-    if stream_format == "sse":
-        if model.startswith("tts-1"):
-            raise ValueError("OpenAI stream_format='sse' is not supported by tts-1 or tts-1-hd models.")
-        raise ValueError("OpenAI stream_format='sse' is not supported by this repository's AudioSegment return contract.")
-    allowed_voices = CLASSIC_VOICES if SUPPORTED_MODELS[model]["voice_set"] == "classic" else OMNI_VOICES
+    allowed_voices = CLASSIC_VOICES if model_config["voice_set"] == "classic" else OMNI_VOICES
     validate_choice(str(voice), allowed_voices, parameter_name="voice", provider="OpenAI", model=model)
-    if instructions and SUPPORTED_MODELS[model]["voice_set"] == "classic":
-        raise ValueError(f"OpenAI instructions are not supported for model '{model}'.")
 
     api_key = ensure_env_var("OPENAI_API_KEY")
-    model_config = SUPPORTED_MODELS[model]
     text_chunks = chunk_text_for_provider(text, model_config["operational_char_limit"])
     resolved_locale = resolve_locale(normalize_language_code(language_code))
 
@@ -138,6 +137,9 @@ def generate(
         }
         if instructions:
             payload["instructions"] = instructions
+        if stream_format != "audio":
+            payload["stream_format"] = stream_format
+        payload.update({key: value for key, value in options.items() if value is not None})
 
         response = request_with_retries(
             "POST",
@@ -176,7 +178,9 @@ def generate(
             len(result["audio"]) / 1000.0,
             model_config["usd_per_minute_estimate"],
         )
-    result["cost_usd"] = round_cost(tts_cost_usd + alignment_cost_usd)
+    result["cost_usd"] = round_cost(tts_cost_usd + alignment_cost_usd) if documented_model else 0.0
+    if not documented_model:
+        result["warnings"] = f"No documented pricing metadata is available for OpenAI model `{model}`."
     return result
 
 
@@ -186,6 +190,6 @@ __all__ = [
     "MODELS_URL",
     "PRICING_URL",
     "RESPONSE_FORMATS",
-    "SUPPORTED_MODELS",
+    "DOCUMENTED_MODELS",
     "generate",
 ]

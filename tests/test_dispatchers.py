@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 
@@ -68,13 +70,54 @@ def test_text_generate_routes_to_falai_provider(monkeypatch):
     assert captured["kwargs"] == {"temperature": 0.1}
 
 
-def test_text_old_fal_identifier_rejected():
+def test_text_openai_forwards_undocumented_model_and_kwargs_to_transport(monkeypatch):
+    from easy_ai_clients.text._apis import openai as provider
+
+    captured = {}
+
+    def fake_execute_json_request(**kwargs):
+        captured["payload"] = kwargs["payload"]
+        return {"id": "resp_1", "output_text": "ok", "usage": {}}, SimpleNamespace(headers={})
+
+    monkeypatch.setattr(provider, "_obter_chave_api", lambda *args, **kwargs: "sk-test")
+    monkeypatch.setattr(provider, "_execute_json_request", fake_execute_json_request)
+
+    result = provider.generate("hello", model="future-text-model", future_knob={"enabled": True})
+
+    assert result["output_text"] == "ok"
+    assert captured["payload"]["model"] == "future-text-model"
+    assert captured["payload"]["future_knob"] == {"enabled": True}
+
+
+def test_text_dispatcher_normalizes_provider_error_and_redacts_secret(monkeypatch):
+    from easy_ai_clients import text
+    from easy_ai_clients.text._apis import openai as provider
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-value")
+
+    def fake_generate(*args, **kwargs):
+        raise RuntimeError("HTTP 401 Authorization: Bearer sk-secret-value")
+
+    monkeypatch.setattr(provider, "generate", fake_generate)
+
+    result = text.generate("hello", api="openai", model="future-text-model")
+
+    assert result["output_text"] == ""
+    assert result["cost_source"] == "unavailable"
+    assert result["error"]["provider"] == "openai"
+    assert "sk-secret-value" not in result["error"]["message"]
+    assert "[redacted]" in result["error"]["message"]
+
+
+def test_text_old_fal_identifier_returns_normalized_error():
     from easy_ai_clients import text
 
     assert "falai" in text.available_apis()
     assert "fal" not in text.available_apis()
-    with pytest.raises(ValueError):
-        text.generate("hello", api="fal")
+    result = text.generate("hello", api="fal")
+    assert result["output_text"] == ""
+    assert result["cost_source"] == "unavailable"
+    assert result["error"]["provider"] == "fal"
 
 
 def test_audio_generate_routes_to_provider(monkeypatch):
@@ -110,6 +153,32 @@ def test_audio_generate_routes_to_provider(monkeypatch):
     assert captured["kwargs"] == {"speed": 1.1}
 
 
+def test_audio_openai_tts_forwards_undocumented_model_and_kwargs_to_transport(monkeypatch):
+    from easy_ai_clients.audio._synthesize._apis import openai as provider
+
+    captured = {}
+
+    def fake_request_with_retries(*args, **kwargs):
+        captured["json_body"] = kwargs["json_body"]
+        return SimpleNamespace(content=b"audio-bytes", headers={})
+
+    monkeypatch.setattr(provider, "ensure_env_var", lambda name: "sk-test")
+    monkeypatch.setattr(provider, "request_with_retries", fake_request_with_retries)
+    monkeypatch.setattr(provider, "build_aligned_chunk_record", lambda **kwargs: ({}, 0.0))
+    monkeypatch.setattr(
+        provider,
+        "_finalize_synthesis_output",
+        lambda records, cost_usd: {"cost_usd": cost_usd, "audio": b"audio", "words": {}},
+    )
+
+    result = provider.generate("hi", model="future-tts-model", future_knob="enabled")
+
+    assert result["cost_usd"] == 0.0
+    assert result["warnings"]
+    assert captured["json_body"]["model"] == "future-tts-model"
+    assert captured["json_body"]["future_knob"] == "enabled"
+
+
 def test_audio_transcribe_routes_to_provider(monkeypatch):
     from easy_ai_clients import audio
     from easy_ai_clients.audio._transcribe._apis import deepgram as provider
@@ -128,6 +197,42 @@ def test_audio_transcribe_routes_to_provider(monkeypatch):
     assert captured["kwargs"] == {"language": "en"}
 
 
+def test_audio_fireworks_transcribe_forwards_undocumented_model_and_kwargs_to_transport(monkeypatch):
+    from easy_ai_clients.audio._transcribe._apis import fireworks as provider
+
+    captured = {}
+
+    def fake_request_with_retries(*args, **kwargs):
+        captured["url"] = args[1]
+        captured["data"] = kwargs["data"]
+        return SimpleNamespace(headers={})
+
+    monkeypatch.setattr(provider, "get_required_api_key", lambda name: "fw-test")
+    monkeypatch.setattr(
+        provider,
+        "build_request_audio",
+        lambda audio_input: {
+            "file_name": "audio.wav",
+            "audio_bytes": b"data",
+            "content_type": "audio/wav",
+            "audio_duration_seconds": 1.0,
+        },
+    )
+    monkeypatch.setattr(provider, "request_with_retries", fake_request_with_retries)
+    monkeypatch.setattr(
+        provider,
+        "response_json",
+        lambda response: {"text": "ok", "duration": 1.0, "words": [], "segments": []},
+    )
+
+    result = provider.transcribe(b"audio", model="future-stt-model", future_knob="enabled")
+
+    assert result["cost_usd"] == 0.0
+    assert result["cost_source"] == "unavailable"
+    assert captured["data"][0] == ("model", "future-stt-model")
+    assert ("future_knob", "enabled") in captured["data"]
+
+
 def test_audio_update_cost_dispatcher_errors():
     from easy_ai_clients import audio
 
@@ -138,7 +243,7 @@ def test_audio_update_cost_dispatcher_errors():
         audio.update_cost("generate", {"text": "ok"}, api="deepgram")
 
 
-def test_removed_revai_transcription_identifier_rejected():
+def test_removed_revai_transcription_identifier_returns_normalized_error():
     from easy_ai_clients import audio
 
     assert audio.available_transcribe_apis() == (
@@ -149,8 +254,10 @@ def test_removed_revai_transcription_identifier_rejected():
         "speechmatics",
         "together",
     )
-    with pytest.raises(ValueError):
-        audio.transcribe("audio.mp3", api="revai")
+    result = audio.transcribe("audio.mp3", api="revai")
+    assert result["text"] == ""
+    assert result["cost_source"] == "unavailable"
+    assert result["error"]["provider"] == "revai"
 
 
 @pytest.mark.parametrize("op", ["generate", "edit", "remix", "analyze"])
@@ -195,6 +302,47 @@ def test_image_dispatcher_routes_to_provider(monkeypatch, op):
     assert "kwargs" in captured
 
 
+def test_image_openai_forwards_undocumented_model_and_kwargs_to_provider_payload(monkeypatch):
+    from easy_ai_clients.image._generate._apis import openai as provider
+
+    captured = {}
+
+    def fake_generate_image(**kwargs):
+        captured.update(kwargs)
+        return {"cust_usd": 0.0, "base64": "abc", "warnings": "", "request_id": "req"}
+
+    monkeypatch.setattr(provider, "get_provider_api_key", lambda *args, **kwargs: "sk-test")
+    monkeypatch.setattr(provider, "_generate_image", fake_generate_image)
+
+    result = provider.generate("a cat", model="future-image-model", future_knob="enabled")
+
+    assert result["base64"] == "abc"
+    assert captured["model"] == "future-image-model"
+    assert captured["extra_body"]["future_knob"] == "enabled"
+
+
+def test_image_analyze_attaches_error_for_provider_error_output(monkeypatch):
+    from easy_ai_clients import image
+    from easy_ai_clients.image._analyze._apis import openai as provider
+
+    monkeypatch.setattr(
+        provider,
+        "analyze",
+        lambda *args, **kwargs: {
+            "request_id": "",
+            "cost_usd": 0.0,
+            "input_text": "describe",
+            "output": "Provider error: HTTP 400 bad model",
+        },
+    )
+
+    result = image.analyze("describe", "img.png", api="openai", model="future-vision")
+
+    assert result["output"] == "Provider error: HTTP 400 bad model"
+    assert result["warnings"] == "Provider error: HTTP 400 bad model"
+    assert result["error"]["model"] == "future-vision"
+
+
 @pytest.mark.parametrize(
     ("op", "provider_module", "function_name", "call"),
     [
@@ -222,6 +370,18 @@ def test_image_dispatcher_routes_to_provider(monkeypatch, op):
             ),
         ),
         (
+            "video_to_video",
+            "easy_ai_clients.video._video_to_video._apis.runway",
+            "generate_video_to_video",
+            lambda video: video.video_to_video(
+                "edit this",
+                video="source.mp4",
+                api="runway",
+                model="gen4_aleph",
+                duration=5,
+            ),
+        ),
+        (
             "motion_control",
             "easy_ai_clients.video._motion_control._apis.falai",
             "generate_motion_control",
@@ -231,6 +391,39 @@ def test_image_dispatcher_routes_to_provider(monkeypatch, op):
                 api="falai",
                 character_orientation="image",
                 duration_seconds=5,
+            ),
+        ),
+        (
+            "avatar_video",
+            "easy_ai_clients.video._avatar_video._apis.runway",
+            "generate_avatar_video",
+            lambda video: video.avatar_video(
+                avatar="avatar-id",
+                text="hello",
+                api="runway",
+                duration_seconds=6,
+            ),
+        ),
+        (
+            "video_with_audio",
+            "easy_ai_clients.video._video_with_audio._apis.hedra",
+            "generate_video_with_audio",
+            lambda video: video.video_with_audio(
+                video="source.mp4",
+                prompt="add room tone",
+                api="hedra",
+                model="video-audio-model-id",
+            ),
+        ),
+        (
+            "create_avatar",
+            "easy_ai_clients.video._create_avatar._apis.runway",
+            "create_avatar",
+            lambda video: video.create_avatar(
+                image="avatar.png",
+                name="Agent",
+                voice="clara",
+                api="runway",
             ),
         ),
         (
@@ -288,15 +481,68 @@ def test_video_dispatcher_routes_to_provider(monkeypatch, op, provider_module, f
     assert captured["kwargs"]
     if op == "image_to_video":
         assert captured["kwargs"]["image_path"] == "image.png"
+    if op == "video_to_video":
+        assert captured["kwargs"]["video_path"] == "source.mp4"
     if op == "motion_control":
         assert captured["kwargs"]["image_path"] == "character.png"
         assert captured["kwargs"]["video_path"] == "motion.mp4"
+    if op == "avatar_video":
+        assert captured["kwargs"]["avatar"] == "avatar-id"
+        assert captured["kwargs"]["text"] == "hello"
+    if op == "video_with_audio":
+        assert captured["kwargs"]["video_path"] == "source.mp4"
+        assert captured["kwargs"]["prompt"] == "add room tone"
+    if op == "create_avatar":
+        assert captured["kwargs"]["image_path"] == "avatar.png"
+        assert captured["kwargs"]["name"] == "Agent"
+        assert captured["kwargs"]["voice"] == "clara"
     if op == "image_lipsync":
         assert captured["kwargs"]["image_path"] == "avatar.png"
         assert captured["kwargs"]["audio_path"] == "voice.wav"
     if op == "video_lipsync":
         assert captured["kwargs"]["video_path"] == "speaker.mp4"
         assert captured["kwargs"]["audio_path"] == "voice.wav"
+
+
+def test_video_falai_forwards_undocumented_model_and_kwargs_to_transport(monkeypatch):
+    from easy_ai_clients.video._text_to_video._apis import falai as provider
+
+    captured = {}
+
+    def fake_fal_submit(model, payload, api_key, timeout_seconds=None):
+        captured["model"] = model
+        captured["payload"] = payload
+        return {"request_id": "req_1"}
+
+    monkeypatch.setattr(provider, "require_env", lambda name, provider_name: "fal-test")
+    monkeypatch.setattr(provider, "fal_submit", fake_fal_submit)
+
+    result = provider.generate_text_to_video(
+        "a product shot",
+        model="fal-ai/future/text-to-video",
+        sync=False,
+        future_knob="enabled",
+    )
+
+    assert result["status"] == "submitted"
+    assert result["cost_usd"] == 0.0
+    assert result["cost_source"] == "unavailable"
+    assert captured["model"] == "fal-ai/future/text-to-video"
+    assert captured["payload"]["future_knob"] == "enabled"
+
+
+def test_video_public_local_media_error_is_normalized():
+    from easy_ai_clients import video
+
+    result = video.image_to_video(
+        "animate this",
+        "missing-local-image.png",
+        api="runway",
+    )
+
+    assert result["status"] == "failed"
+    assert result["cost_source"] == "unavailable"
+    assert result["error"]["provider"] == "runway"
 
 
 def test_video_async_helpers_route_to_provider(monkeypatch):
@@ -334,42 +580,30 @@ def test_video_async_helpers_route_to_provider(monkeypatch):
     assert captured["download"][1] == "https://example.com/v.mp4"
 
 
-def test_google_text_to_video_validates_current_veo_limits():
+def test_google_text_to_video_forwards_future_native_parameters():
     from easy_ai_clients.video._text_to_video._apis import google as provider
 
-    with pytest.raises(ValueError, match="person_generation"):
-        provider.generate_text_to_video("a product shot", person_generation="allow_adult")
+    payload = provider._build_payload(  # noqa: SLF001
+        provider.DEFAULT_MODEL,
+        {"prompt": "a product shot", "output_path": None},
+        {
+            "person_generation": "allow_adult",
+            "number_of_videos": 2,
+            "duration_seconds": 4,
+            "resolution": "1080p",
+            "negative_prompt": "no text",
+        },
+    )
 
-    with pytest.raises(ValueError, match="number_of_videos"):
-        provider.generate_text_to_video("a product shot", number_of_videos=2)
-
-    with pytest.raises(ValueError, match="duration_seconds=8"):
-        provider.generate_text_to_video(
-            "a product shot",
-            duration_seconds=4,
-            resolution="1080p",
-        )
-
-    with pytest.raises(ValueError, match="Unsupported parameter"):
-        provider.generate_text_to_video("a product shot", negative_prompt="no text")
+    assert payload["parameters"]["personGeneration"] == "allow_adult"
+    assert payload["parameters"]["numberOfVideos"] == 2
+    assert payload["parameters"]["durationSeconds"] == 4
+    assert payload["parameters"]["resolution"] == "1080p"
+    assert payload["parameters"]["negative_prompt"] == "no text"
 
 
-def test_google_image_to_video_validates_current_veo_limits_and_payload_shape():
+def test_google_image_to_video_forwards_future_native_parameters_and_payload_shape():
     from easy_ai_clients.video._image_to_video._apis import google as provider
-
-    with pytest.raises(ValueError, match="person_generation"):
-        provider.generate_image_to_video(
-            "animate this",
-            image_url="https://example.com/image.png",
-            person_generation="allow_all",
-        )
-
-    with pytest.raises(ValueError, match="number_of_videos"):
-        provider.generate_image_to_video(
-            "animate this",
-            image_url="https://example.com/image.png",
-            number_of_videos=2,
-        )
 
     payload = provider._build_payload(  # noqa: SLF001
         provider.DEFAULT_MODEL,
@@ -378,9 +612,17 @@ def test_google_image_to_video_validates_current_veo_limits_and_payload_shape():
             "image": "data:image/png;base64,first",
             "output_path": None,
         },
-        {"last_image_url": "data:image/png;base64,last"},
+        {
+            "last_image_url": "data:image/png;base64,last",
+            "person_generation": "allow_all",
+            "number_of_videos": 2,
+            "future_parameter": "ok",
+        },
     )
 
+    assert payload["parameters"]["personGeneration"] == "allow_all"
+    assert payload["parameters"]["numberOfVideos"] == 2
+    assert payload["parameters"]["future_parameter"] == "ok"
     assert payload["instances"][0]["image"] == {
         "inlineData": {"mimeType": "image/png", "data": "first"}
     }
@@ -389,39 +631,33 @@ def test_google_image_to_video_validates_current_veo_limits_and_payload_shape():
     }
 
 
-def test_falai_video_lipsync_validates_current_frame_range():
+def test_falai_video_lipsync_forwards_future_native_parameters():
     from easy_ai_clients.video._video_lipsync._apis import falai as provider
 
-    provider._build_payload(  # noqa: SLF001
+    payload = provider._build_payload(  # noqa: SLF001
         provider.DEFAULT_MODEL,
         {
             "video": "https://example.com/source.mp4",
             "audio": "https://example.com/voice.wav",
             "output_path": None,
         },
-        {"num_frames": 145},
+        {"num_frames": 40, "future_parameter": "ok"},
     )
 
-    with pytest.raises(ValueError, match="41 to 241"):
-        provider.generate_video_lipsync(
-            video_url="https://example.com/source.mp4",
-            audio_url="https://example.com/voice.wav",
-            num_frames=40,
-        )
-
-    with pytest.raises(ValueError, match="41 to 241"):
-        provider.generate_video_lipsync(
-            video_url="https://example.com/source.mp4",
-            audio_url="https://example.com/voice.wav",
-            num_frames=242,
-        )
+    assert payload["num_frames"] == 40
+    assert payload["future_parameter"] == "ok"
 
 
-def test_falai_text_to_video_validates_current_frame_rate_range():
+def test_falai_text_to_video_forwards_future_native_parameters():
     from easy_ai_clients.video._text_to_video._apis import falai as provider
 
-    with pytest.raises(ValueError, match="4 to 60"):
-        provider.generate_text_to_video("a product shot", frames_per_second=120)
+    payload = provider._build_payload(  # noqa: SLF001
+        provider.DEFAULT_MODEL,
+        {"prompt": "a product shot", "output_path": None},
+        {"frames_per_second": 120, "future_parameter": "ok"},
+    )
+    assert payload["frames_per_second"] == 120
+    assert payload["future_parameter"] == "ok"
 
 
 def test_video_extract_video_url_accepts_falai_string_shapes():

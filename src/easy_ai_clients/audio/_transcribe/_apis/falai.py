@@ -25,12 +25,12 @@ from .._apis._shared import (
 from ..post_processing import _build_transcription_bundle, build_raw_transcription_payload
 from ..pre_processing import build_data_url, build_request_audio
 
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "fal-ai/elevenlabs/speech-to-text": {"label": "Scribe v1"},
     "fal-ai/elevenlabs/speech-to-text/scribe-v2": {"label": "Scribe v2"},
 }
 PRICING_URL = "https://api.fal.ai/v1/models/pricing"
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "language_code",
     "tag_audio_events",
     "diarize",
@@ -47,11 +47,7 @@ def transcribe(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Transcribe audio with fal.ai. See `transcribe/docs/falai.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported_models = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported fal.ai model '{model}'. Supported models: {supported_models}.")
-
-    options = reject_unknown_kwargs("fal.ai", model, kwargs, SUPPORTED_KWARGS)
+    options = reject_unknown_kwargs("fal.ai", model, kwargs, DOCUMENTED_KWARGS)
     language_code = options.pop("language_code", None)
     tag_audio_events = bool(options.pop("tag_audio_events", True))
     diarize = bool(options.pop("diarize", True))
@@ -73,6 +69,7 @@ def transcribe(
         input_payload["keyterms"] = list(keyterms)
     if num_speakers is not None:
         input_payload["num_speakers"] = int(num_speakers)
+    input_payload.update({key: value for key, value in options.items() if value is not None})
 
     submit_response = request_with_retries(
         "POST",
@@ -176,7 +173,7 @@ def _resolve_fal_cost_metadata(
         pricing_payload = response_json(pricing_response)
     except Exception as error:
         return {
-            "cost_usd": None,
+            "cost_usd": 0.0,
             "cost_source": "unavailable",
             "cost_is_estimated": False,
             "cost_lookup_error": f"fal.ai pricing lookup failed: {error}",
@@ -185,7 +182,7 @@ def _resolve_fal_cost_metadata(
     prices = pricing_payload.get("prices") or []
     if not prices:
         return {
-            "cost_usd": None,
+            "cost_usd": 0.0,
             "cost_source": "unavailable",
             "cost_is_estimated": False,
             "cost_lookup_error": "fal.ai pricing API did not return a price for this endpoint.",
@@ -196,7 +193,7 @@ def _resolve_fal_cost_metadata(
         unit_price = float(price_payload.get("unit_price"))
     except (TypeError, ValueError):
         return {
-            "cost_usd": None,
+            "cost_usd": 0.0,
             "cost_source": "unavailable",
             "cost_is_estimated": False,
             "cost_lookup_error": "fal.ai pricing API returned an invalid unit_price for this endpoint.",

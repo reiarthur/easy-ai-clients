@@ -16,6 +16,7 @@ from typing import Any
 
 from PIL import Image
 
+from ..._error_utils import error_message
 from .cost_utils import decimal_to_float
 from .errors import BlockedOperation, ProviderResponseError
 from .http_utils import download_bytes, request
@@ -55,7 +56,7 @@ def consume_kwargs(
     *,
     passthrough_keys: Iterable[str] = (),
 ) -> tuple[dict[str, Any], str]:
-    """Consume supported public keyword arguments.
+    """Consume documented keyword arguments and preserve provider-native extras.
 
     Args:
         kwargs: Mutable kwargs dictionary received by a public wrapper.
@@ -65,7 +66,8 @@ def consume_kwargs(
 
     Returns:
         Tuple `(values, warning)`. `values` contains defaults plus supplied
-        values. `warning` is non-empty when unsupported arguments remain.
+        values. Unknown names are stored under `_provider_kwargs` and forwarded
+        by `payload_from_keys`; `warning` is kept for provider/local issues.
     """
 
     values = dict(defaults)
@@ -77,16 +79,16 @@ def consume_kwargs(
         if key in kwargs:
             values[key] = kwargs.pop(key)
 
-    if kwargs:
-        names = ", ".join(f"`{key}`" for key in sorted(kwargs))
-        return values, f"Unsupported keyword argument(s): {names}."
+    values["_provider_kwargs"] = dict(kwargs)
     return values, ""
 
 
 def payload_from_keys(values: dict[str, Any], keys: Iterable[str]) -> dict[str, Any]:
     """Return explicitly supplied provider payload fields from consumed values."""
 
-    return {key: values[key] for key in keys if key in values and values[key] is not None}
+    payload = {key: values[key] for key in keys if key in values and values[key] is not None}
+    payload.update({key: value for key, value in values.get("_provider_kwargs", {}).items() if value is not None})
+    return payload
 
 
 def provider_error_to_warning(exc: Exception) -> str:
@@ -103,8 +105,8 @@ def provider_error_to_warning(exc: Exception) -> str:
         pieces = [str(exc)]
         if exc.response_text:
             pieces.append(exc.response_text[:400])
-        return join_warnings(*pieces)
-    return str(exc)
+        return f"Provider error: {error_message(join_warnings(*pieces))}"
+    return f"Provider error: {error_message(exc)}"
 
 
 def extract_request_id(
@@ -457,7 +459,7 @@ def validate_openrouter_model(
     operation: str,
     timeout_seconds: int = 60,
 ) -> str | None:
-    """Validate whether an OpenRouter model supports the requested operation.
+    """Keep OpenRouter catalog lookup as documentation, not a local acceptance gate.
 
     Args:
         model: OpenRouter model id.
@@ -468,26 +470,6 @@ def validate_openrouter_model(
         `None` when the model is compatible, otherwise a user-facing warning that
         explains why the model cannot be used safely for the operation.
     """
-
-    models = get_openrouter_models(timeout_seconds=timeout_seconds)
-    metadata = next((item for item in models if item.get("id") == model), None)
-    if not metadata:
-        return f"OpenRouter model `{model}` was not found in the live models catalog."
-
-    architecture = metadata.get("architecture", {})
-    input_modalities = set(architecture.get("input_modalities") or [])
-    output_modalities = set(architecture.get("output_modalities") or [])
-
-    if operation == "analyze":
-        if "image" not in input_modalities or "text" not in output_modalities:
-            return f"OpenRouter model `{model}` does not support image-to-text analysis."
-        return None
-
-    if "image" not in output_modalities:
-        return f"OpenRouter model `{model}` does not support image output."
-
-    if operation in {"edit", "remix"} and "image" not in input_modalities:
-        return f"OpenRouter model `{model}` does not support image input required by `{operation}`."
 
     return None
 

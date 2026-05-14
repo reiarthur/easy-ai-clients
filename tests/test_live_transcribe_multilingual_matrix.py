@@ -628,7 +628,7 @@ def _load_fixtures(fixtures_dir: Path) -> list[FixtureRecord]:
 
 def _provider_models(provider: str) -> list[str]:
     module = importlib.import_module(f"easy_ai_clients.audio._transcribe._apis.{provider}")
-    models = getattr(module, "SUPPORTED_MODELS", None)
+    models = getattr(module, "DOCUMENTED_MODELS", None)
     if isinstance(models, dict):
         return list(models)
     return sorted(models or [])

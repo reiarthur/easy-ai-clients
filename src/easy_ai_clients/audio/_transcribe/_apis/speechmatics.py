@@ -28,10 +28,11 @@ from ..post_processing import _build_transcription_bundle, build_raw_transcripti
 from ..pre_processing import build_request_audio
 
 API_BASE_URL = "https://asr.api.speechmatics.com/v2"
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "standard": {"price_per_hour": 0.45},
     "enhanced": {"price_per_hour": 0.75},
 }
+_UNKNOWN_MODEL_METADATA = {"price_per_hour": 0.0}
 ADDON_PRICES_PER_HOUR = {
     "translation_config": 0.65,
     "summarization_config": 0.12,
@@ -39,7 +40,7 @@ ADDON_PRICES_PER_HOUR = {
     "sentiment_analysis_config": 0.12,
     "topic_detection_config": 0.20,
 }
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "language",
     "output_locale",
     "additional_vocab",
@@ -73,11 +74,8 @@ def transcribe(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Transcribe audio with Speechmatics. See `transcribe/docs/speechmatics.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported_models = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported Speechmatics model '{model}'. Supported models: {supported_models}.")
-
-    options = reject_unknown_kwargs("Speechmatics", model, kwargs, SUPPORTED_KWARGS)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("Speechmatics", model, kwargs, DOCUMENTED_KWARGS)
     language = options.pop("language", "auto")
     diarization = options.pop("diarization", "speaker")
     enable_entities = bool(options.pop("enable_entities", False))
@@ -129,6 +127,9 @@ def transcribe(
         "audio_events_config",
     ):
         value = options.pop(key, None)
+        if value not in (None, "", [], {}):
+            config_payload[key] = value
+    for key, value in options.items():
         if value not in (None, "", [], {}):
             config_payload[key] = value
 
@@ -184,8 +185,11 @@ def transcribe(
         language_mkd=language_mkd,
         request_id=job_id,
         cost_usd=cost_usd,
-        cost_source="official_pricing_table",
+        cost_source="official_pricing_table" if documented_model else "unavailable",
         cost_is_estimated=True,
+        cost_lookup_error=None
+        if documented_model
+        else f"No documented pricing metadata is available for Speechmatics model `{model}`.",
     )
 
 
@@ -193,7 +197,7 @@ def _compute_speechmatics_cost(duration_seconds, *, model, config_payload):
     """Computes Speechmatics batch cost from the official hourly table."""
     total = compute_cost_by_duration(
         duration_seconds,
-        unit_price=SUPPORTED_MODELS[model]["price_per_hour"],
+        unit_price=DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)["price_per_hour"],
         billing_unit="hour",
     )
     for config_key, addon_price in ADDON_PRICES_PER_HOUR.items():

@@ -50,7 +50,7 @@ Fal.ai transcription payloads do not include final per-call cost. The adapter qu
 
 - If `X-Fal-Billable-Units` is present, the adapter multiplies that header by the Pricing API unit price and returns `cost_source="pricing_api_billable_units"`.
 - If the header is absent, the adapter calculates from audio duration and the Pricing API unit price with `cost_source="pricing_api"`.
-- If the pricing lookup fails, `cost_usd=None`, `cost_source="unavailable"`, and `cost_lookup_error` explains the failure.
+- If the pricing lookup fails, `cost_usd=0.0`, `cost_source="unavailable"`, and `cost_lookup_error` explains the failure.
 
 Pricing API calculations are deterministic estimates, so `cost_is_estimated=True`.
 

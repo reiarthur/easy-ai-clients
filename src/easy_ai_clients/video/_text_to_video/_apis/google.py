@@ -27,7 +27,7 @@ MODEL_ALIASES = {
     "veo-3.1-generate-001": "veo-3.1-generate-preview",
 }
 
-MODEL_DATA = {
+DOCUMENTED_MODEL_DATA = {
     "veo-3.1-lite-generate-preview": {
         "durations": [4, 6, 8],
         "rates": {"720p": 0.05, "1080p": 0.08},
@@ -66,7 +66,7 @@ MODEL_DATA = {
     },
 }
 
-MODEL_OPTIONS = {
+DOCUMENTED_MODEL_OPTIONS = {
     name: {
         "duration_seconds",
         "aspect_ratio",
@@ -75,49 +75,41 @@ MODEL_OPTIONS = {
         "seed",
         "number_of_videos",
     }
-    for name in MODEL_DATA
+    for name in DOCUMENTED_MODEL_DATA
 }
 
 COMMON_OPTIONS = {"model", "timeout_seconds", "poll_interval_seconds", "extra_payload"}
 
 
 def _selected_model(kwargs):
-    model = MODEL_ALIASES.get(kwargs.get("model", DEFAULT_MODEL), kwargs.get("model", DEFAULT_MODEL))
-    if model not in MODEL_DATA:
-        raise ValueError(f"Unsupported Google Veo text-to-video model: {model}.")
-    return model
+    return MODEL_ALIASES.get(kwargs.get("model", DEFAULT_MODEL), kwargs.get("model", DEFAULT_MODEL))
 
 
 def _duration(model, kwargs):
-    allowed = MODEL_DATA[model]["durations"]
+    if model not in DOCUMENTED_MODEL_DATA:
+        return int(kwargs.get("duration_seconds", 8))
+    allowed = DOCUMENTED_MODEL_DATA[model]["durations"]
     default_value = allowed[0]
     requested_resolution = str(
-        kwargs.get("resolution", MODEL_DATA[model]["default_resolution"])
+        kwargs.get("resolution", DOCUMENTED_MODEL_DATA[model]["default_resolution"])
     ).lower()
     if requested_resolution in {"1080p", "4k"} and 8 in allowed:
         default_value = 8
     value = int(kwargs.get("duration_seconds", default_value))
-    if value not in allowed:
-        joined = ", ".join(str(item) for item in allowed)
-        raise ValueError(f"Invalid duration_seconds for Google Veo model {model}: {value}. Allowed values: {joined}.")
     return value
 
 
 def _resolution(model, kwargs):
-    value = str(kwargs.get("resolution", MODEL_DATA[model]["default_resolution"])).lower()
+    if model not in DOCUMENTED_MODEL_DATA:
+        return str(kwargs.get("resolution", "720p")).lower()
+    value = str(kwargs.get("resolution", DOCUMENTED_MODEL_DATA[model]["default_resolution"])).lower()
     if value == "4K":
         value = "4k"
-    if value not in MODEL_DATA[model]["rates"]:
-        joined = ", ".join(MODEL_DATA[model]["rates"].keys())
-        raise ValueError(f"Invalid resolution for Google Veo model {model}: {value}. Allowed values: {joined}.")
     return value
 
 
 def _validate_resolution_duration(model, duration, resolution):
-    if resolution in {"1080p", "4k"} and duration != 8:
-        raise ValueError(
-            f"Google Veo model {model} requires duration_seconds=8 for {resolution} output."
-        )
+    return None
 
 
 def _person_generation_values(model):
@@ -128,17 +120,13 @@ def _person_generation_values(model):
 
 def _number_of_videos(model, kwargs):
     value = int(kwargs.get("number_of_videos", 1))
-    maximum = MODEL_DATA[model]["max_videos"]
-    if value < 1 or value > maximum:
-        raise ValueError(
-            f"Invalid number_of_videos for Google Veo model {model}: {value}. "
-            f"Allowed values: 1 to {maximum}."
-        )
+    if model not in DOCUMENTED_MODEL_DATA:
+        return value
     return value
 
 
 def _build_payload(model, prepared, kwargs):
-    validate_allowed_kwargs(kwargs, MODEL_OPTIONS[model], model, PROVIDER, "text_to_video", COMMON_OPTIONS)
+    validate_allowed_kwargs(kwargs, DOCUMENTED_MODEL_OPTIONS.get(model, set()), model, PROVIDER, "text_to_video", COMMON_OPTIONS)
     duration = _duration(model, kwargs)
     resolution = _resolution(model, kwargs)
     number_of_videos = _number_of_videos(model, kwargs)
@@ -168,6 +156,16 @@ def _build_payload(model, prepared, kwargs):
     for source_name, target_name in optional_map.items():
         if source_name in kwargs and kwargs[source_name] is not None:
             parameters[target_name] = kwargs[source_name]
+    known_parameter_names = {
+        "duration_seconds",
+        "aspect_ratio",
+        "resolution",
+        "number_of_videos",
+        *optional_map,
+    }
+    for name, value in kwargs.items():
+        if name not in COMMON_OPTIONS and name not in known_parameter_names and value is not None:
+            parameters[name] = value
     payload = {
         "instances": [{"prompt": prepared["prompt"]}],
         "parameters": parameters,
@@ -180,11 +178,18 @@ def _build_payload(model, prepared, kwargs):
 
 
 def _cost(model, kwargs):
+    if model not in DOCUMENTED_MODEL_DATA:
+        return {
+            "cost_usd": 0.0,
+            "cost_is_estimated": True,
+            "cost_source": "unavailable",
+            "cost_reason": f"No documented pricing metadata is available for Google Veo model `{model}`.",
+        }
     duration = _duration(model, kwargs)
     resolution = _resolution(model, kwargs)
     _validate_resolution_duration(model, duration, resolution)
     number_of_videos = _number_of_videos(model, kwargs)
-    rate = MODEL_DATA[model]["rates"][resolution]
+    rate = DOCUMENTED_MODEL_DATA[model]["rates"][resolution]
     return {
         "cost_usd": rate * duration * number_of_videos,
         "cost_is_estimated": True,

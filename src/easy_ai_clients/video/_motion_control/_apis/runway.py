@@ -21,7 +21,7 @@ DEFAULT_MODEL = "act_two"
 COST_SOURCE = "runway_api_pricing_credits_snapshot_2026-05-13"
 CREDIT_TO_USD = 0.01
 
-MODEL_OPTIONS = {
+DOCUMENTED_MODEL_OPTIONS = {
     DEFAULT_MODEL: {
         "duration_seconds",
         "billing_duration_seconds",
@@ -41,10 +41,7 @@ RATIOS = ["1280:720", "720:1280", "960:960", "1104:832", "832:1104", "1584:672"]
 
 
 def _selected_model(kwargs):
-    model = kwargs.get("model", DEFAULT_MODEL)
-    if model != DEFAULT_MODEL:
-        raise ValueError(f"Unsupported Runway motion-control model: {model}.")
-    return model
+    return kwargs.get("model", DEFAULT_MODEL)
 
 
 def _duration(kwargs):
@@ -54,8 +51,6 @@ def _duration(kwargs):
         value = float(kwargs.get("duration_seconds"))
     else:
         raise RuntimeError("Cost calculation uncertainty for Runway Act-Two: duration_seconds is required.")
-    if value < 3 or value > 30:
-        raise ValueError("duration_seconds must be between 3 and 30 for Runway Act-Two.")
     return value
 
 
@@ -80,7 +75,7 @@ def _character(prepared):
 
 
 def _build_payload(model, prepared, kwargs):
-    validate_allowed_kwargs(kwargs, MODEL_OPTIONS[model], model, PROVIDER, "motion_control", COMMON_OPTIONS)
+    validate_allowed_kwargs(kwargs, DOCUMENTED_MODEL_OPTIONS.get(model, set()), model, PROVIDER, "motion_control", COMMON_OPTIONS)
     if not prepared["reference"]:
         raise ValueError("Runway Act-Two requires reference_path or reference_url as the driving performance video.")
     validate_enum("ratio", kwargs.get("ratio"), RATIOS, PROVIDER, model)
@@ -92,6 +87,8 @@ def _build_payload(model, prepared, kwargs):
         "character": _character(prepared),
         "reference": {"type": "video", "uri": prepared["reference"]},
     }
+    if prepared.get("prompt"):
+        payload["promptText"] = prepared["prompt"]
     if kwargs.get("body_control") is not None:
         payload["bodyControl"] = bool(kwargs.get("body_control"))
     if kwargs.get("bodyControl") is not None:
@@ -106,6 +103,9 @@ def _build_payload(model, prepared, kwargs):
     moderation = _content_moderation(model, kwargs)
     if moderation is not None:
         payload["contentModeration"] = moderation
+    for name, value in kwargs.items():
+        if name not in COMMON_OPTIONS and name not in payload and value is not None:
+            payload[name] = value
     if "extra_payload" in kwargs:
         from ..._shared import merge_extra_payload
 
@@ -114,6 +114,15 @@ def _build_payload(model, prepared, kwargs):
 
 
 def _cost(model, kwargs):
+    if model != DEFAULT_MODEL:
+        return {
+            "cost_usd": 0.0,
+            "cost_is_estimated": True,
+            "cost_source": "unavailable",
+            "cost_credits": 0.0,
+            "credit_source": "unavailable",
+            "cost_reason": f"No documented pricing metadata is available for Runway model `{model}`.",
+        }
     duration = _duration(kwargs)
     credits = 5 * duration
     return {
@@ -147,8 +156,6 @@ def _video_url(raw):
 
 
 def generate_motion_control(prompt=None, image_path=None, image_url=None, video_path=None, video_url=None, reference_path=None, reference_url=None, output_path=None, sync=True, **kwargs):
-    if prompt:
-        raise ValueError("Runway Act-Two motion control does not accept prompt; use character and reference media instead.")
     model = _selected_model(kwargs)
     prepared = prepare_motion_control(prompt, image_path, image_url, video_path, video_url, reference_path, reference_url, output_path)
     payload = _build_payload(model, prepared, kwargs)

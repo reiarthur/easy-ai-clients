@@ -25,7 +25,7 @@ from .._apis._shared import (
 from ..post_processing import _build_transcription_bundle, build_raw_transcription_payload
 from ..pre_processing import build_request_audio
 
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "whisper-v3": {
         "endpoint": "https://audio-prod.api.fireworks.ai/v1/audio/transcriptions",
         "price_per_minute": 0.0015,
@@ -35,12 +35,16 @@ SUPPORTED_MODELS = {
         "price_per_minute": 0.0009,
     },
 }
+_UNKNOWN_MODEL_METADATA = {
+    "endpoint": "https://audio-prod.api.fireworks.ai/v1/audio/transcriptions",
+    "price_per_minute": 0.0,
+}
 VAD_MODELS = {"silero", "whisperx-pyannet"}
 ALIGNMENT_MODELS = {"mms_fa", "tdnn_ffn"}
 RESPONSE_FORMATS = {"json", "text", "srt", "verbose_json", "vtt"}
 TIMESTAMP_GRANULARITIES = {"word", "segment"}
 PREPROCESSING_MODES = {"none", "dynamic", "soft_dynamic", "bass_dynamic"}
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "vad_model",
     "alignment_model",
     "language",
@@ -63,11 +67,9 @@ def transcribe(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Transcribe audio with Fireworks AI. See `transcribe/docs/fireworks.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported_models = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported Fireworks model '{model}'. Supported models: {supported_models}.")
-
-    options = reject_unknown_kwargs("Fireworks", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("Fireworks", model, kwargs, DOCUMENTED_KWARGS)
     language = options.pop("language", None)
     prompt = options.pop("prompt", None)
     diarize = bool(options.pop("diarize", True))
@@ -75,11 +77,7 @@ def transcribe(
     timeout_seconds = float(options.pop("timeout_seconds", 300))
     response_format = str(options.pop("response_format", "verbose_json")).strip()
     validate_choice(response_format, RESPONSE_FORMATS, parameter_name="response_format", provider="Fireworks", model=model)
-    if response_format != "verbose_json":
-        raise ValueError("Fireworks response_format must be 'verbose_json' to preserve the repository transcription contract.")
     timestamp_granularities = _normalize_timestamp_granularities(options.pop("timestamp_granularities", ["word", "segment"]))
-    if "word" not in timestamp_granularities:
-        raise ValueError("Fireworks timestamp_granularities must include 'word' to preserve diarized words.")
     vad_model = options.pop("vad_model", None)
     if vad_model is not None:
         validate_choice(str(vad_model), VAD_MODELS, parameter_name="vad_model", provider="Fireworks", model=model)
@@ -97,7 +95,6 @@ def transcribe(
 
     request_audio = build_request_audio(audio_input)
     api_key = get_required_api_key("FIREWORKS_API_KEY")
-    model_config = SUPPORTED_MODELS[model]
 
     form_fields = [
         ("model", model),
@@ -123,6 +120,9 @@ def transcribe(
         form_fields.append(("max_speakers", int(max_speakers)))
     if preprocessing is not None:
         form_fields.append(("preprocessing", str(preprocessing)))
+    for key, value in options.items():
+        if value not in (None, "", [], {}):
+            form_fields.append((key, value))
 
     response = request_with_retries(
         "POST",
@@ -184,8 +184,11 @@ def transcribe(
         language_mkd=language_mkd,
         request_id=payload.get("request_id"),
         cost_usd=cost_usd,
-        cost_source="official_pricing_table",
+        cost_source="official_pricing_table" if documented_model else "unavailable",
         cost_is_estimated=True,
+        cost_lookup_error=None
+        if documented_model
+        else f"No documented pricing metadata is available for Fireworks model `{model}`.",
     )
 
 

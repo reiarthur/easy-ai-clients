@@ -107,9 +107,13 @@ Supported operations:
 | `image` | `remix` | Reference-image guided generation | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
 | `image` | `analyze` | Vision and multimodal analysis | `anthropic`, `falai`, `fireworks`, `google`, `groq`, `openai`, `openrouter`, `together`, `xai` |
 | `image` | `update_cost` | Post-hoc cost refresh where implemented | `openrouter` |
-| `video` | `generate` / `text_to_video` | Prompt-only video generation | `falai`, `google`, `runway` |
-| `video` | `image_to_video` | Prompt + image video generation | `falai`, `google`, `runway` |
-| `video` | `motion_control` | Character or motion-reference video generation | `falai`, `runway` |
+| `video` | `generate` / `text_to_video` | Prompt-only video generation | `falai`, `google`, `hedra`, `runway` |
+| `video` | `image_to_video` | Prompt + image video generation | `falai`, `google`, `hedra`, `runway` |
+| `video` | `video_to_video` | Source-video guided generation/editing | `falai`, `google`, `hedra`, `runway` |
+| `video` | `motion_control` | Character or motion-reference video generation | `falai`, `hedra`, `runway` |
+| `video` | `avatar_video` | Avatar or talking-video generation from speech | `falai`, `hedra`, `runway` |
+| `video` | `video_with_audio` | Generate/add audio for a source video | `hedra` |
+| `video` | `create_avatar` | Create a provider avatar/persona | `runway` |
 | `video` | `image_lipsync` | Image/avatar + audio lip-sync video | `falai` |
 | `video` | `video_lipsync` | Source-video + audio lip-sync video | `falai` |
 | `video` | `get_status`, `get_result`, `download` | Async request helpers for video operations | matching operation provider |
@@ -135,7 +139,11 @@ print(image.available_remix_apis())
 print(image.available_analyze_apis())
 print(video.available_text_to_video_apis())
 print(video.available_image_to_video_apis())
+print(video.available_video_to_video_apis())
 print(video.available_motion_control_apis())
+print(video.available_avatar_video_apis())
+print(video.available_video_with_audio_apis())
+print(video.available_create_avatar_apis())
 print(video.available_image_lipsync_apis())
 print(video.available_video_lipsync_apis())
 ```
@@ -275,6 +283,27 @@ from_image = video.image_to_video(
     duration=5,
 )
 
+edited = video.video_to_video(
+    "Keep the framing but make the lighting warmer.",
+    video="source.mp4",
+    api="runway",
+    duration=5,
+)
+
+custom_avatar = video.create_avatar(
+    image="avatar.png",
+    name="Launch Host",
+    voice="clara",
+    api="runway",
+)
+
+avatar = video.avatar_video(
+    avatar_id=custom_avatar["avatar_id"],
+    text="Welcome to the launch.",
+    api="runway",
+    duration_seconds=6,
+)
+
 submitted = video.motion_control(
     image="character.png",
     video="motion-reference.mp4",
@@ -295,20 +324,23 @@ operation and provider.
 
 | Operation | Normalized result |
 | --- | --- |
-| `text.generate(...)` | `request_id`, `cost_source`, `cost_usd`, `input_text`, optional `instruction`, `output_text` |
-| `audio.generate(...)` | `cost_usd`, `audio` as `pydub.AudioSegment`, `words` |
-| `audio.transcribe(...)` | `text`, optional `words` / `segments` / `silences`, speaker metadata, `provider_metadata`, `request_id`, `cost_usd`, `cost_source`, `cost_is_estimated`, `cost_lookup_error`, optional `mkd` |
-| `image.generate(...)`, `image.edit(...)`, `image.remix(...)` | `cust_usd`, `base64`, `warnings`, `request_id` |
-| `image.analyze(...)` | `request_id`, `cost_usd`, `input_text`, `output` |
-| `video.generate(...)`, `video.text_to_video(...)`, `video.image_to_video(...)`, `video.motion_control(...)`, `video.image_lipsync(...)`, `video.video_lipsync(...)` | `provider`, `model`, `status`, `request_id`, `video_url`, `output_path`, `cost_usd`, `cost_is_estimated`, `cost_source`, `raw_response` |
+| `text.generate(...)` | `request_id`, `cost_source`, `cost_usd`, `input_text`, optional `instruction`, `output_text`; failures add `error` and usually `warnings` |
+| `audio.generate(...)` | `cost_usd`, `audio` as `pydub.AudioSegment`, `words`; failures use `audio=None`, `words={}`, and add `error` |
+| `audio.transcribe(...)` | `text`, optional `words` / `segments` / `silences`, speaker metadata, `provider_metadata`, `request_id`, `cost_usd`, `cost_source`, `cost_is_estimated`, `cost_lookup_error`, optional `mkd`; failures add `error` |
+| `image.generate(...)`, `image.edit(...)`, `image.remix(...)` | `cust_usd`, `base64`, `warnings`, `request_id`; failures use `base64=""` and add `error` |
+| `image.analyze(...)` | `request_id`, `cost_usd`, `input_text`, `output`; failures add `error` |
+| `video.generate(...)`, `video.text_to_video(...)`, `video.image_to_video(...)`, `video.video_to_video(...)`, `video.motion_control(...)`, `video.avatar_video(...)`, `video.video_with_audio(...)`, `video.create_avatar(...)`, `video.image_lipsync(...)`, `video.video_lipsync(...)` | `provider`, `model`, `status`, `request_id`, `video_url`, `output_path`, `cost_usd`, `cost_is_estimated`, `cost_source`, `raw_response`; failures use `status="failed"` and add `error` |
 
 The image generation/edit/remix cost key is intentionally `cust_usd` for the
 current public contract.
 
 ## Provider Parameters
 
-Extra keyword arguments are provider-native. They are validated or forwarded by
-the selected adapter:
+Extra keyword arguments are provider-native and are forwarded by the selected
+adapter whenever the wrapper can still assemble a request. Model names in the
+docs are documented models used for defaults, pricing, and examples; they are
+not a local acceptance list. If the provider accepts a newer model or kwarg, the
+call can succeed before this library documents it.
 
 ```python
 from easy_ai_clients import image, text
@@ -330,10 +362,8 @@ image.generate(
 )
 ```
 
-Unsupported kwargs raise before the provider call when the adapter has an
-explicit supported-parameter surface. Image generation/edit/remix operations may
-return provider-side failures in the `warnings` field when a provider supplies a
-structured error payload.
+If a model or kwarg is wrong, the provider response is normalized into the
+operation's public result shape with an `error` object where possible.
 
 ## Costs
 
@@ -342,10 +372,12 @@ Cost values are best-effort normalized USD values:
 - Some providers return exact usage or request cost.
 - Some adapters compute cost from usage fields and local pricing tables.
 - Some router/provider costs can be refined after the call.
-- Video adapters currently report estimated cost from provider pricing tables
-  and validated duration/resolution parameters.
-- For transcription, unknown cost is `None`, not `0.0`; inspect
-  `cost_source`, `cost_is_estimated`, and `cost_lookup_error`.
+- Video adapters currently report estimated cost from documented provider
+  pricing tables when metadata exists.
+- fal.ai video adapters can use the official pricing estimate API when callers
+  pass `billing_unit_quantity` or `unit_quantity` explicitly.
+- Unknown cost is `0.0` with `cost_source="unavailable"` and a warning or
+  `cost_lookup_error` explaining that pricing metadata is not documented.
 
 ```python
 from easy_ai_clients import audio, image, text, video
@@ -365,16 +397,21 @@ print(video_result["cost_is_estimated"])
 
 ## Errors
 
-The package uses standard Python exceptions instead of a custom hierarchy.
-Common cases:
+Public operations return normalized failure dictionaries when they can preserve
+the operation shape. The added `error` object contains `type`, `message`,
+`provider`, `operation`, and `model`; messages are redacted to avoid leaking API
+keys or authorization headers. Helper functions such as `list_models`,
+`update_cost`, and some direct private adapter calls can still raise standard
+Python exceptions.
 
-- `ValueError`: unknown `api`, unsupported model, unsupported parameter, or
-  invalid parameter value.
-- `TypeError`: unsupported keyword argument in adapters that reject unknown
-  kwargs with `TypeError`.
-- `RuntimeError` / `OSError`: missing credentials or provider failures.
-- `requests` / `httpx` exceptions: transport or HTTP status failures where the
-  adapter does not normalize them into a result field.
+Common helper/private-adapter exceptions:
+
+- `ValueError`: missing required local media, incompatible local wrapper input,
+  or unsupported helper operation.
+- `RuntimeError` / `OSError`: missing credentials or provider failures that are
+  not called through a public dispatcher.
+- `requests` / `httpx` exceptions: transport or HTTP status failures in helper
+  paths.
 - `NotImplementedError`: helper methods such as cost updates are called for a
   provider that does not implement them.
 

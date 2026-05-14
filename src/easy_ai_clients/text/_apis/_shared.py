@@ -287,25 +287,9 @@ def validate_kwargs(
     kwargs: Mapping[str, Any],
     supported_parameters: Iterable[str],
 ) -> None:
-    """Validate generation kwargs before a provider request is sent."""
-    supported = set(supported_parameters)
-    for parameter in kwargs:
-        if parameter in supported:
-            continue
+    """Keep the documented kwarg surface available without blocking new provider params."""
 
-        exists_elsewhere = parameter in KNOWN_PARAMETER_NAMES
-        supported_list = ", ".join(sorted(supported))
-        scope_note = (
-            "This parameter exists for another provider or API surface, but not "
-            f"for {provider} {api} with model {model!r}."
-            if exists_elsewhere
-            else "This parameter is not part of the documented text-generation surface."
-        )
-        raise UnsupportedParameterError(
-            f"Unsupported parameter for {provider} {api}: {parameter!r}. "
-            f"Model: {model!r}. Supported parameters for this context: "
-            f"{supported_list}. {scope_note}"
-        )
+    return None
 
 
 def build_chat_payload(

@@ -59,14 +59,16 @@ Never commit a real `.env` file. Use the repository template:
 | `MISTRAL_API_KEY` | `text.generate(api="mistral")`, `audio.generate(api="mistral")` |
 | `OPENAI_API_KEY` | OpenAI text, audio, and image operations |
 | `OPENROUTER_API_KEY` | OpenRouter operations and some catalog/cost lookup paths |
-| `RUNWAYML_API_SECRET` | Runway video operations |
+| `RUNWAYML_API_SECRET` | Runway video generation, avatar-video, ephemeral uploads, and custom avatar creation |
+| `HEDRA_API_KEY` | Hedra video generation, video-to-video, motion-control, video-with-audio, and avatar operations |
 | `SPEECHMATICS_API_KEY` | `audio.transcribe(api="speechmatics")` |
 | `STABILITY_API_KEY` | `image.generate / edit / remix(api="stability")` |
 | `TOGETHER_API_KEY` | Together text, audio, and image operations |
 | `XAI_API_KEY` | xAI text, audio, and image operations |
 
-`HEDRA_API_KEY` is included in `.env.example` as a reserved video variable for
-future Hedra adapters. No current public dispatcher uses it.
+Hedra credentials are read only when a Hedra video operation is selected. Runway
+uploads use the same `RUNWAYML_API_SECRET` as the generation and avatar
+endpoints.
 
 ## Missing Credentials
 

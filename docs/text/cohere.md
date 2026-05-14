@@ -5,7 +5,7 @@
 - Raw generation endpoint: `POST https://api.cohere.com/v2/chat`.
 - Live catalog endpoint: `GET https://api.cohere.com/v1/models`.
 - The project abstracts credential loading, message construction, parameter validation, streaming accumulation, result normalization, and local cost estimation where available.
-- Provider-native kwargs are forwarded directly after validation; unsupported kwargs fail before credentials are read.
+- Provider-native kwargs are forwarded directly; documented parameters are reference metadata, and provider rejections are returned through the normalized public error shape.
 
 ## B. Account and access
 - Create account / console: https://dashboard.cohere.com/

@@ -12,6 +12,8 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+from .._error_utils import attach_error, error_message
+
 __all__ = ["generate", "list_models", "update_cost", "available_apis"]
 
 
@@ -72,10 +74,29 @@ def generate(input_text, instruction=None, model=None, *, api, **kwargs):
       `input_text`, optional `instruction`, and `output_text`.
     """
 
-    module = _load(api)
-    if model is None:
-        return module.generate(input_text, instruction=instruction, **kwargs)
-    return module.generate(input_text, instruction=instruction, model=model, **kwargs)
+    try:
+        module = _load(api)
+        if model is None:
+            return module.generate(input_text, instruction=instruction, **kwargs)
+        return module.generate(input_text, instruction=instruction, model=model, **kwargs)
+    except Exception as exc:
+        result = {
+            "request_id": None,
+            "cost_source": "unavailable",
+            "cost_usd": 0.0,
+            "input_text": input_text,
+            "output_text": "",
+            "warnings": error_message(exc),
+        }
+        if instruction is not None:
+            result["instruction"] = instruction
+        return attach_error(
+            result,
+            exc,
+            provider=api,
+            operation="generate",
+            model=model,
+        )
 
 
 def list_models(*, api: str, **kwargs: Any):

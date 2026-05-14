@@ -51,9 +51,17 @@ Accepted `kwargs` for the implemented default: `model`, `num_frames`, `frames_pe
 
 Validated values include `resolution` `580p` or `720p`, `aspect_ratio` `16:9`, `9:16`, or `1:1`, `num_frames` 17 to 161, `frames_per_second` 4 to 60, `seed` 0 to 4294967295, `num_inference_steps` 2 to 50, `guidance_scale` 1 to 10, `shift` 1 to 10, `interpolator_model` `none`, `film`, or `rife`, `num_interpolated_frames` 0 to 4, `video_quality` `low`, `medium`, `high`, or `maximum`, and `video_write_mode` `fast`, `balanced`, or `small`.
 
-Unsupported kwargs are rejected. `extra_payload` is an explicit escape hatch and may bypass wrapper validation.
+Documented kwargs are reference metadata only. Undocumented kwargs are forwarded; provider rejections are returned through the normalized public error shape. `extra_payload` may override the generated REST payload.
 
 ## Model Coverage
+
+2026-05-14 update: the adapter now submits all listed fal.ai text-to-video
+endpoints through the queue API. The original table notes are retained for
+schema/pricing context, but rows that say `official_available` are now executable
+via `model=...`; cost is estimated only when the billing unit can be inferred or
+the caller supplies an explicit billing quantity such as `duration_seconds`,
+`compute_seconds`, `billing_megapixels`, `billing_tokens`, or the generic
+`billing_unit_quantity` / `unit_quantity` fields.
 
 | Model or endpoint | Official source | Status | Implemented default | Notes |
 | --- | --- | --- | --- | --- |
@@ -94,7 +102,7 @@ print(result["cost_usd"])
 
 ## Pricing Notes
 
-The default wrapper estimates `cost_usd` as `$0.08` per generated video using fal.ai model pricing. The result includes `cost_is_estimated=True` because safe validation does not call the paid endpoint or reconcile with usage records.
+The default wrapper estimates `cost_usd` as `$0.08` per generated video using fal.ai model pricing. If `billing_unit_quantity` or `unit_quantity` is supplied, the wrapper calls fal.ai's official pricing estimate API and reports `cost_source="fal_pricing_estimate_api"`. The result includes `cost_is_estimated=True` because safe validation does not call the paid endpoint or reconcile with usage records.
 
 ## Validation Note
 

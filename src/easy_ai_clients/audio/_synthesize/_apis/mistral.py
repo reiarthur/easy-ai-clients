@@ -31,7 +31,7 @@ MODELS_URL = "https://docs.mistral.ai/models/model-cards/voxtral-tts-26-03"
 ENDPOINT_URL = "https://docs.mistral.ai/api/endpoint/audio/speech"
 PRICING_URL = "https://docs.mistral.ai/models/model-cards/voxtral-tts-26-03"
 
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "voxtral-mini-tts-2603": {
         "usd_per_million_chars": 16.0,
         "operational_char_limit": 1800,
@@ -43,7 +43,7 @@ SUPPORTED_MODELS = {
 }
 
 RESPONSE_FORMATS = {"pcm", "wav", "mp3", "flac", "opus"}
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "reference_audio",
     "reference_audio_path",
     "reference_audio_base64",
@@ -53,6 +53,10 @@ SUPPORTED_KWARGS = {
     "timeout_seconds",
 }
 DEFAULT_VOICE = "default"
+_UNKNOWN_MODEL_METADATA = {
+    "usd_per_million_chars": 0.0,
+    "operational_char_limit": 1800,
+}
 
 
 def generate(
@@ -63,16 +67,12 @@ def generate(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Generate speech with Mistral Voxtral TTS. See `synthesize/docs/mistral.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported Mistral TTS model '{model}'. Supported models: {supported}.")
-
-    options = reject_unknown_kwargs("Mistral", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("Mistral", model, kwargs, DOCUMENTED_KWARGS)
     response_format = str(options.pop("response_format", "mp3")).strip().lower()
     validate_choice(response_format, RESPONSE_FORMATS, parameter_name="response_format", provider="Mistral", model=model)
     stream = bool(options.pop("stream", False))
-    if stream:
-        raise ValueError("Mistral stream=True is not supported by this repository's AudioSegment return contract.")
     timeout_seconds = float(options.pop("timeout_seconds", 180.0))
     api_key = ensure_env_var("MISTRAL_API_KEY")
     resolved_locale = resolve_locale(normalize_language_code(language_code))
@@ -105,7 +105,6 @@ def generate(
             "The public default voice='default' could not resolve to an account voice."
         )
 
-    model_config = SUPPORTED_MODELS[model]
     text_chunks = chunk_text_for_provider(text, model_config["operational_char_limit"])
 
     chunk_records: list[dict[str, Any]] = []
@@ -121,6 +120,9 @@ def generate(
             payload["voice_id"] = voice_id
         if reference_bundle is not None:
             payload["ref_audio"] = reference_bundle["audio_base64"]
+        if stream:
+            payload["stream"] = stream
+        payload.update({key: value for key, value in options.items() if value is not None})
 
         audio_bytes, _, _ = synthesize_json_base64_tts(
             url=API_URL,
@@ -146,7 +148,9 @@ def generate(
         total_alignment_cost += chunk_alignment_cost
 
     result = _finalize_synthesis_output(chunk_records, cost_usd=0.0)
-    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost)
+    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost) if documented_model else 0.0
+    if not documented_model:
+        result["warnings"] = f"No documented pricing metadata is available for Mistral model `{model}`."
     return result
 
 
@@ -188,7 +192,7 @@ __all__ = [
     "MODELS_URL",
     "PRICING_URL",
     "RESPONSE_FORMATS",
-    "SUPPORTED_MODELS",
+    "DOCUMENTED_MODELS",
     "VOICES_URL",
     "generate",
 ]

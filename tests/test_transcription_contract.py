@@ -124,12 +124,11 @@ def test_cost_lookup_error_sanitizes_known_secrets(monkeypatch):
     assert "[redacted]" in message
 
 
-def test_removed_deepgram_models_rejected():
+def test_removed_deepgram_models_are_forward_compatible():
     from easy_ai_clients.audio._transcribe._apis import deepgram
 
     for model in ("base", "base-general", "whisper-tiny", "whisper-base"):
-        with pytest.raises(ValueError):
-            deepgram.transcribe("audio.mp3", model=model)
+        assert deepgram._validate_model(model) is None  # noqa: SLF001
 
 
 def test_deepgram_no_hidden_fallback_by_default(monkeypatch):
@@ -172,7 +171,7 @@ def test_deepgram_lookup_failure_is_unknown_for_non_nova3(monkeypatch):
         diarize=True,
     )
 
-    assert metadata["cost_usd"] is None
+    assert metadata["cost_usd"] == 0.0
     assert metadata["cost_source"] == "unavailable"
     assert metadata["cost_is_estimated"] is False
     assert "usage:read" in metadata["cost_lookup_error"]
@@ -365,18 +364,22 @@ def test_falai_invalid_pricing_value_is_unavailable(monkeypatch):
         None,
     )
 
-    assert metadata["cost_usd"] is None
+    assert metadata["cost_usd"] == 0.0
     assert metadata["cost_source"] == "unavailable"
     assert metadata["cost_is_estimated"] is False
     assert "invalid unit_price" in metadata["cost_lookup_error"]
 
 
-def test_removed_together_models_rejected():
+def test_removed_together_models_use_unknown_cost_metadata(monkeypatch):
     from easy_ai_clients.audio._transcribe._apis import together
 
+    monkeypatch.setattr(together, "request_with_retries", lambda *args, **kwargs: FakeResponse({"data": []}))
+
     for model in ("deepgram/flux", "deepgram/nova-3-en", "deepgram/nova-3-multi"):
-        with pytest.raises(ValueError):
-            together.transcribe("audio.mp3", model=model)
+        metadata = together._resolve_together_cost_metadata("key", model, 60)  # noqa: SLF001
+        assert metadata["cost_usd"] == 0.0
+        assert metadata["cost_source"] == "unavailable"
+        assert "No documented pricing metadata" in metadata["cost_lookup_error"]
 
 
 def test_together_cost_prefers_pricing_api(monkeypatch):

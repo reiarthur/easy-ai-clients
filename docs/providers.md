@@ -4,9 +4,15 @@ This page is the entry point for the per-provider documentation pages. It
 mirrors the operation tree of the public API and lists which environment
 variable each provider needs.
 
-The detailed per-provider notes (default models, accepted parameters,
-pricing, validation status, known limitations) live alongside this file in
-`docs/<modality>/<operation>/<provider>.md`.
+The detailed per-provider notes (documented default models, analyzed
+parameters, pricing, validation status, known limitations) live alongside this
+file in `docs/<modality>/<operation>/<provider>.md`.
+
+Documented models and parameters are reference metadata, not a local acceptance
+list. Public operations forward undocumented `model` values and provider-native
+kwargs whenever a request can be assembled; if the provider rejects them, the
+dispatcher returns the operation's normalized failure shape with an `error`
+object.
 
 For copyable dispatcher examples and normalized response structures, see
 [`usage.md`](usage.md).
@@ -125,6 +131,7 @@ underlying API expects.
 | --- | --- | --- |
 | `falai` | `FAL_KEY` | [`falai`](video/text_to_video/falai.md) |
 | `google` | `GOOGLE_API_KEY` | [`google`](video/text_to_video/google.md) |
+| `hedra` | `HEDRA_API_KEY` | [`hedra`](video/text_to_video/hedra.md) |
 | `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/text_to_video/runway.md) |
 
 ### `video.image_to_video(...)`
@@ -133,14 +140,45 @@ underlying API expects.
 | --- | --- | --- |
 | `falai` | `FAL_KEY` | [`falai`](video/image_to_video/falai.md) |
 | `google` | `GOOGLE_API_KEY` | [`google`](video/image_to_video/google.md) |
+| `hedra` | `HEDRA_API_KEY` | [`hedra`](video/image_to_video/hedra.md) |
 | `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/image_to_video/runway.md) |
+
+### `video.video_to_video(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `falai` | `FAL_KEY` | [`falai`](video/video_to_video/falai.md) |
+| `google` | `GOOGLE_API_KEY` | [`google`](video/video_to_video/google.md) |
+| `hedra` | `HEDRA_API_KEY` | [`hedra`](video/video_to_video/hedra.md) |
+| `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/video_to_video/runway.md) |
 
 ### `video.motion_control(...)`
 
 | API | Env var | Doc |
 | --- | --- | --- |
 | `falai` | `FAL_KEY` | [`falai`](video/motion_control/falai.md) |
+| `hedra` | `HEDRA_API_KEY` | [`hedra`](video/motion_control/hedra.md) |
 | `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/motion_control/runway.md) |
+
+### `video.avatar_video(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `falai` | `FAL_KEY` | [`falai`](video/avatar_video/falai.md) |
+| `hedra` | `HEDRA_API_KEY` | [`hedra`](video/avatar_video/hedra.md) |
+| `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/avatar_video/runway.md) |
+
+### `video.video_with_audio(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `hedra` | `HEDRA_API_KEY` | [`hedra`](video/video_with_audio/hedra.md) |
+
+### `video.create_avatar(...)`
+
+| API | Env var | Doc |
+| --- | --- | --- |
+| `runway` | `RUNWAYML_API_SECRET` | [`runway`](video/create_avatar/runway.md) |
 
 ### `video.image_lipsync(...)`
 

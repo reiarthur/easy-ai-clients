@@ -14,7 +14,7 @@ This benchmark runs real paid transcription calls sequentially. Each provider/mo
 
 Text metrics are computed without translating text. The runner applies Unicode NFKC normalization, case folding, punctuation/symbol removal, whitespace collapsing, and then computes WER from whitespace-delimited tokens. It also computes CER and normalized character similarity from punctuation-free, whitespace-free characters. For Mandarin, character similarity is treated as the primary quality signal because whitespace tokenization is weak.
 
-Cost fields come from the normalized `easy_ai_clients.audio.transcribe(...)` result. When a library cost refresh helper exists, the runner uses it after a successful call. Unknown cost remains distinct from free: `cost_usd=None` and `cost_source="unavailable"`.
+Cost fields come from the normalized `easy_ai_clients.audio.transcribe(...)` result. When a library cost refresh helper exists, the runner uses it after a successful call. Unknown cost remains distinct from free through `cost_source="unavailable"` and a lookup warning, while `cost_usd` is reported as `0.0`.
 
 Update note: the Fireworks `whisper-v3-turbo` rows that previously returned HTTP 401 were rerun with the refreshed `FIREWORKS_API_KEY` and merged into this report. All 17 previously blocked/not-retried Fireworks rows now have `ok` status.
 

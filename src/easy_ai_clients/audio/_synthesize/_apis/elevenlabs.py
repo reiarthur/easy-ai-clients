@@ -35,7 +35,7 @@ MODELS_URL = "https://elevenlabs.io/docs/api-reference/text-to-speech/convert-wi
 CATALOG_URL = "https://elevenlabs.io/docs/api-reference/models/get-all"
 PRICING_URL = "https://elevenlabs.io/pricing/api/"
 
-MODEL_METADATA = {
+DOCUMENTED_MODEL_METADATA = {
     "eleven_v3": {
         "char_limit": 5000,
         "usd_per_million_chars": 100.0,
@@ -100,7 +100,7 @@ OUTPUT_FORMATS = {
     "opus_48000_128",
     "opus_48000_192",
 }
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "stability",
     "similarity_boost",
     "style",
@@ -121,6 +121,11 @@ SUPPORTED_KWARGS = {
     "timeout_seconds",
 }
 DEFAULT_VOICE = "NndrHq4eUijN4wsQVtzW"
+_UNKNOWN_MODEL_METADATA = {
+    "char_limit": 5000,
+    "usd_per_million_chars": 0.0,
+    "supports_language_code": True,
+}
 
 
 def generate(
@@ -131,11 +136,9 @@ def generate(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Generate speech with ElevenLabs TTS. See `synthesize/docs/elevenlabs.md`."""
-    if model not in MODEL_METADATA:
-        supported_models = ", ".join(sorted(MODEL_METADATA))
-        raise ValueError(f"Unsupported ElevenLabs model '{model}'. Supported models: {supported_models}.")
-
-    options = reject_unknown_kwargs("ElevenLabs", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODEL_METADATA.get(model, _UNKNOWN_MODEL_METADATA)
+    documented_model = model in DOCUMENTED_MODEL_METADATA
+    options = reject_unknown_kwargs("ElevenLabs", model, kwargs, DOCUMENTED_KWARGS)
     stability = validate_number_range(options.pop("stability", 0.7), parameter_name="stability", provider="ElevenLabs", model=model, minimum=0.0, maximum=1.0)
     similarity_boost = validate_number_range(options.pop("similarity_boost", 0.9), parameter_name="similarity_boost", provider="ElevenLabs", model=model, minimum=0.0, maximum=1.0)
     style = validate_number_range(options.pop("style", 0.0), parameter_name="style", provider="ElevenLabs", model=model, minimum=0.0, maximum=1.0)
@@ -167,11 +170,8 @@ def generate(
     language_code = normalize_language_code(language_code)
 
     api_key = ensure_env_var("ELEVENLABS_API_KEY")
-    model_config = MODEL_METADATA[model]
     chunk_limit = compute_operational_char_limit(model_config["char_limit"])
     resolved_language = resolve_language_code(language_code)
-    if not model_config["supports_language_code"] and resolved_language != "en":
-        raise ValueError(f"ElevenLabs model '{model}' does not support non-English language_code values.")
     text_chunks = chunk_text_for_provider(text, chunk_limit)
 
     voice_settings = {
@@ -206,6 +206,21 @@ def generate(
                 optimize_streaming_latency=optimize_streaming_latency,
                 output_format=output_format,
                 timeout_seconds=float(options.get("timeout_seconds", 120)),
+                extra_payload={
+                    key: value
+                    for key, value in options.items()
+                    if key
+                    not in {
+                        "apply_language_text_normalization",
+                        "pronunciation_dictionary_locators",
+                        "previous_text",
+                        "next_text",
+                        "previous_request_ids",
+                        "next_request_ids",
+                        "use_pvc_as_ivc",
+                        "timeout_seconds",
+                    }
+                },
                 chunk_index=chunk_index,
             )
         )
@@ -214,7 +229,13 @@ def generate(
         total_billed_characters += int(chunk.pop("character_cost", 0) or 0)
 
     cost_usd = round((total_billed_characters / 1_000_000.0) * model_config["usd_per_million_chars"], 6)
-    return _finalize_synthesis_output(chunk_records, cost_usd=cost_usd)
+    result = _finalize_synthesis_output(
+        chunk_records,
+        cost_usd=cost_usd if documented_model else 0.0,
+    )
+    if not documented_model:
+        result["warnings"] = f"No documented pricing metadata is available for ElevenLabs model `{model}`."
+    return result
 
 
 def _calculate_read_timeout(text_length: int, timeout_seconds: float) -> float:
@@ -244,6 +265,7 @@ def _request_tts(
     optimize_streaming_latency: int | None,
     output_format: str,
     timeout_seconds: float,
+    extra_payload: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Mapping[str, Any]]:
     """Call ElevenLabs `/with-timestamps` for one chunk."""
     payload: dict[str, Any] = {
@@ -254,7 +276,7 @@ def _request_tts(
         "apply_language_text_normalization": bool(apply_language_text_normalization),
         "use_pvc_as_ivc": bool(use_pvc_as_ivc),
     }
-    if MODEL_METADATA[model_id]["supports_language_code"]:
+    if DOCUMENTED_MODEL_METADATA.get(model_id, _UNKNOWN_MODEL_METADATA)["supports_language_code"]:
         payload["language_code"] = language_code
     if seed is not None:
         payload["seed"] = int(seed)
@@ -268,6 +290,8 @@ def _request_tts(
         payload["previous_request_ids"] = list(previous_request_ids)
     if next_request_ids:
         payload["next_request_ids"] = list(next_request_ids)
+    if extra_payload:
+        payload.update({key: value for key, value in extra_payload.items() if value is not None})
 
     params: dict[str, Any] = {
         "enable_logging": "true" if enable_logging else "false",
@@ -319,6 +343,7 @@ def _generate_chunk(
     optimize_streaming_latency: int | None,
     output_format: str,
     timeout_seconds: float,
+    extra_payload: Mapping[str, Any] | None = None,
     chunk_index: int,
     depth: int = 0,
 ) -> list[dict[str, Any]]:
@@ -344,6 +369,7 @@ def _generate_chunk(
             optimize_streaming_latency=optimize_streaming_latency,
             output_format=output_format,
             timeout_seconds=timeout_seconds,
+            extra_payload=extra_payload,
         )
     except Exception as error:
         can_split = _is_retryable_error(error) and depth < 6 and len(chunk_text) >= 440
@@ -377,6 +403,7 @@ def _generate_chunk(
             optimize_streaming_latency=optimize_streaming_latency,
             output_format=output_format,
             timeout_seconds=timeout_seconds,
+            extra_payload=extra_payload,
             chunk_index=chunk_index,
             depth=depth + 1,
         )
@@ -473,7 +500,7 @@ __all__ = [
     "API_URL_TEMPLATE",
     "CATALOG_URL",
     "DEFAULT_VOICE",
-    "MODEL_METADATA",
+    "DOCUMENTED_MODEL_METADATA",
     "MODELS_URL",
     "OUTPUT_FORMATS",
     "PRICING_URL",

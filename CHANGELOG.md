@@ -3,6 +3,36 @@
 All notable changes to **easy-ai-clients** are documented in this file.
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+## 0.7.0 - 2026-05-14
+
+### Added
+
+- Added `video.video_with_audio(...)`, `video.create_avatar(...)`,
+  `available_video_with_audio_apis()`, and `available_create_avatar_apis()`.
+- Added Hedra video-to-video, motion-control, and video-with-audio adapters
+  with local asset uploads and catalog-backed credit estimates where available.
+- Added Runway ephemeral uploads for local media, custom avatar creation, and
+  create-avatar chaining for `video.avatar_video(..., create_avatar=True)`.
+- Added optional fal.ai pricing estimate support when callers pass
+  `billing_unit_quantity` or `unit_quantity`.
+- Expanded video coverage with `video.video_to_video(...)` and
+  `video.avatar_video(...)`, plus discovery helpers for both operations.
+- Added Hedra video adapters for text-to-video, image-to-video, and avatar
+  video using `HEDRA_API_KEY`.
+- Expanded Fal.ai video model metadata and forwarding across text, image,
+  video-to-video, motion/reference, and avatar/talking-video endpoints.
+- Added Runway `gen4_aleph` video-to-video and `gwm1_avatars` avatar-video
+  adapters, and limited Google Veo video extension support.
+
+### Changed
+
+- Restricted Google Veo video extension to Veo 3.1/3.1 Fast with 8-second,
+  720p, single-output requests.
+- Updated Runway avatar-video payload normalization to use official
+  `runway-preset`, `custom`, `audio`, and `text` shapes.
+
 ## 0.6.0 - 2026-05-13
 
 ### Added

@@ -1,25 +1,44 @@
 # Error Handling
 
-`easy-ai-clients` uses standard Python exceptions instead of a custom exception
-hierarchy. Dispatchers validate the selected `api` before importing the private
-provider adapter, and provider adapters validate credentials and supported
-parameters before or during the outbound request.
+Public operations in `easy-ai-clients` prefer normalized failure dictionaries
+over exceptions. When a dispatcher can preserve the operation shape, it returns
+safe empty output plus an `error` object:
+
+- `type`
+- `message`
+- `provider`
+- `operation`
+- `model`
+
+Error messages are compacted and redacted so API keys, authorization headers,
+tokens, and matching environment-secret values are not exposed.
 
 ## Common Exceptions
 
 | Exception | Typical cause |
 | --- | --- |
-| `ValueError` | Missing or unknown `api`, unsupported provider model, invalid enumerated value, invalid numeric range, or unsupported parameter in adapters that raise `ValueError`. |
-| `TypeError` | Unsupported keyword argument in adapters that reject unknown kwargs with `TypeError`. |
-| `RuntimeError` | Missing credentials in some text/image paths, provider response normalization failure, or wrapped provider/network failure. |
+| `ValueError` | Local request assembly errors, incompatible local media arguments, or unsupported helper operation. |
+| `TypeError` | Invalid helper/private-adapter call shape. |
+| `RuntimeError` | Missing credentials in direct private adapter paths, provider response normalization failure, or wrapped provider/network failure. |
 | `OSError` / `EnvironmentError` | Missing credentials in audio and some provider helper paths. |
 | `requests.HTTPError` / `httpx.HTTPStatusError` | Provider returned a non-success HTTP status and the adapter raised the HTTP exception directly. |
 | `requests.ConnectionError` / `requests.Timeout` | Network failure or timeout after retries. |
 | `NotImplementedError` | Helper called for a provider that does not implement it, such as `text.update_cost(api="anthropic")`. |
 
-Exact exception classes can vary by modality because provider adapters use
-different HTTP clients and normalization paths. Catch narrow exceptions around
-the operation you call when you need custom recovery behavior.
+Exact exception classes can still vary in helper methods and private adapters
+because provider modules use different HTTP clients. Public dispatchers convert
+those failures into dictionaries when possible.
+
+## Public Failure Shapes
+
+| Operation | Failure fields |
+| --- | --- |
+| `text.generate` | `output_text=""`, `cost_usd=0.0`, `cost_source="unavailable"`, `warnings`, `error` |
+| `audio.generate` | `audio=None`, `words={}`, `cost_usd=0.0`, `warnings`, `error` |
+| `audio.transcribe` | `text=""`, `cost_usd=0.0`, `cost_source="unavailable"`, `cost_lookup_error`, `warnings`, `error` |
+| `image.generate/edit/remix` | `base64=""`, `cust_usd=0.0`, `warnings`, `error` |
+| `image.analyze` | `output` contains the failure text, `cost_usd=0.0`, `warnings`, `error` |
+| `video.*` | `status="failed"`, `video_url=None`, `cost_usd=0.0`, `cost_source="unavailable"`, `warnings`, `error` |
 
 ## Image Warnings
 
@@ -42,21 +61,30 @@ be treated as the failure message.
 `input_text`, and `output`. Some provider-side failures are represented in the
 `output` string when the adapter can preserve the public return contract.
 
-## Unsupported Parameters
+## Models and Provider Kwargs
 
-Provider-native kwargs are validated by the selected adapter when that adapter
-has an explicit supported-parameter surface.
+Provider-native kwargs are forwarded whenever the wrapper can assemble a
+request. The documented model and parameter tables are reference metadata for
+defaults, examples, and pricing. They are not an acceptance gate.
 
 ```python
 from easy_ai_clients import text
 
-try:
-    text.generate("hi", api="openai", this_parameter_does_not_exist=True)
-except (TypeError, ValueError) as exc:
-    print("Rejected before or during request preparation:", exc)
+result = text.generate(
+    "hi",
+    api="openai",
+    model="provider-new-model",
+    provider_new_parameter=True,
+)
+
+if result.get("error"):
+    print(result["error"]["message"])
 ```
 
-Unsupported parameters are not silently ignored.
+If the provider accepts the model and kwargs, the call succeeds. If the provider
+rejects them, the dispatcher returns a normalized error result. Local validation
+is kept only for cases that prevent building a request, such as missing local
+files, conflicting `path`/`url` arguments, or invalid internal payload shapes.
 
 ## Cost Helper Errors
 
@@ -101,18 +129,18 @@ except NotImplementedError:
 `audio.update_cost(...)` raises `ValueError` for unsupported operations; the
 only supported operation is currently `"transcribe"`.
 
-## Unknown Transcription Cost
+## Unknown Cost
 
-Transcription adapters do not invent free costs. When cost cannot be known,
-results use:
+When cost cannot be known from provider usage, pricing APIs, or documented
+metadata, results use:
 
-- `cost_usd=None`
+- `cost_usd=0.0`
 - `cost_source="unavailable"`
-- `cost_is_estimated=False`
-- `cost_lookup_error` with a sanitized reason when one is available
+- `cost_is_estimated` according to the operation contract
+- `warnings` or `cost_lookup_error` with a sanitized reason when one is available
 
 When a provider price table or pricing API is used, `cost_is_estimated=True`.
-Deepgram exact usage lookup returns `cost_source="usage_lookup"` and
+Deepgram exact usage lookup still returns `cost_source="usage_lookup"` and
 `cost_is_estimated=False`.
 
 ## Defensive Pattern
@@ -122,13 +150,13 @@ from easy_ai_clients import text
 
 
 def safe_generate(prompt: str, *, api: str, **kwargs):
-    try:
-        return text.generate(prompt, api=api, **kwargs)
-    except (TypeError, ValueError) as exc:
-        raise SystemExit(f"Configuration error: {exc}") from exc
-    except (RuntimeError, OSError) as exc:
-        raise SystemExit(f"Provider setup or runtime failure: {exc}") from exc
+    result = text.generate(prompt, api=api, **kwargs)
+    if result.get("error"):
+        raise SystemExit(result["error"]["message"])
+    return result
 ```
 
-Do not catch broad exceptions unless you are at an application boundary where
-the error is logged, redacted, and converted to a user-facing failure.
+For helper methods and direct private adapters, catch narrow exceptions around
+the call you make. Do not catch broad exceptions unless you are at an application
+boundary where the error is logged, redacted, and converted to a user-facing
+failure.

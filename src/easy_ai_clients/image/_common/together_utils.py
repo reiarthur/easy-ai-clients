@@ -353,12 +353,7 @@ def edit_image(
     elif _together_supports_image_url(model):
         body["image_url"] = image_to_data_url(prepared.image)
     else:
-        return build_result(
-            warnings=join_warnings(
-                prepared.preprocess_warnings,
-                f"Together AI model `{model}` does not document single-image edit support for this public wrapper.",
-            )
-        )
+        body["reference_images"] = [image_to_data_url(prepared.image)]
     if seed is not None:
         body["seed"] = seed
     if extra_body:
@@ -444,9 +439,9 @@ def remix_image(
             )
         body["image_url"] = ordered_images[0]
     else:
-        return build_result(
-            warnings=f"Together AI model `{model}` does not document remix support for this public wrapper."
-        )
+        if prepared.base_image is not None:
+            reference_images = [image_to_data_url(prepared.base_image), *reference_images]
+        body["reference_images"] = reference_images
     if seed is not None:
         body["seed"] = seed
     if extra_body:

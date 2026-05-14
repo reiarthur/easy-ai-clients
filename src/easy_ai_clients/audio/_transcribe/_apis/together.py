@@ -35,7 +35,7 @@ from ..pre_processing import build_request_audio
 
 API_URL = "https://api.together.xyz/v1/audio/transcriptions"
 MODELS_URL = "https://api.together.xyz/v1/models"
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "openai/whisper-large-v3": {
         "price_per_minute": 0.0015,
         "supports_diarization": True,
@@ -45,9 +45,13 @@ SUPPORTED_MODELS = {
         "supports_diarization": False,
     },
 }
+_UNKNOWN_MODEL_METADATA = {
+    "price_per_minute": 0.0,
+    "supports_diarization": True,
+}
 RESPONSE_FORMATS = {"json", "verbose_json"}
 TIMESTAMP_GRANULARITIES = {"segment", "word"}
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "language",
     "prompt",
     "response_format",
@@ -67,26 +71,17 @@ def transcribe(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Transcribe audio with Together AI. See `transcribe/docs/together.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported_models = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported Together model '{model}'. Supported models: {supported_models}.")
-
-    options = reject_unknown_kwargs("Together", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
+    options = reject_unknown_kwargs("Together", model, kwargs, DOCUMENTED_KWARGS)
     language = options.pop("language", "auto")
     prompt = options.pop("prompt", None)
     response_format = str(options.pop("response_format", "verbose_json")).strip()
     validate_choice(response_format, RESPONSE_FORMATS, parameter_name="response_format", provider="Together", model=model)
-    if response_format != "verbose_json":
-        raise ValueError("Together response_format must be 'verbose_json' to preserve the repository transcription contract.")
     temperature = options.pop("temperature", None)
     if temperature is not None:
         validate_number_range(temperature, parameter_name="temperature", provider="Together", model=model, minimum=0.0, maximum=1.0)
     timestamp_granularities = _normalize_timestamp_granularities(options.pop("timestamp_granularities", ["word", "segment"]))
-    if "word" not in timestamp_granularities:
-        raise ValueError("Together timestamp_granularities must include 'word' to preserve timed words.")
-    diarize = bool(options.pop("diarize", SUPPORTED_MODELS[model]["supports_diarization"]))
-    if diarize and not SUPPORTED_MODELS[model]["supports_diarization"]:
-        raise ValueError(f"Together model '{model}' does not support diarize=True on the validated endpoint.")
+    diarize = bool(options.pop("diarize", model_config["supports_diarization"]))
     min_speakers = options.pop("min_speakers", None)
     max_speakers = options.pop("max_speakers", None)
     language_mkd = options.pop("language_mkd", "en")
@@ -113,6 +108,9 @@ def transcribe(
         form_fields.append(("min_speakers", int(min_speakers)))
     if max_speakers is not None:
         form_fields.append(("max_speakers", int(max_speakers)))
+    for key, value in options.items():
+        if value not in (None, "", [], {}):
+            form_fields.append((key, value))
 
     response = request_with_retries(
         "POST",
@@ -208,12 +206,14 @@ def _resolve_together_cost_metadata(api_key, model, duration_seconds):
     return {
         "cost_usd": compute_cost_by_duration(
             duration_seconds,
-            unit_price=SUPPORTED_MODELS[model]["price_per_minute"],
+            unit_price=DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)["price_per_minute"],
             billing_unit="minute",
         ),
-        "cost_source": "official_pricing_table",
+        "cost_source": "official_pricing_table" if model in DOCUMENTED_MODELS else "unavailable",
         "cost_is_estimated": True,
-        "cost_lookup_error": lookup_error,
+        "cost_lookup_error": lookup_error
+        if model in DOCUMENTED_MODELS
+        else f"No documented pricing metadata is available for Together model `{model}`.",
     }
 
 

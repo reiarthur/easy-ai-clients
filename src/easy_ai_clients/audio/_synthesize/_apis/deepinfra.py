@@ -31,7 +31,7 @@ CATALOG_URL = "https://api.deepinfra.com/models/list"
 MODELS_URL = "https://deepinfra.com/models/text-to-speech"
 SCHEMA_URL = "https://docs.deepinfra.com/api-reference/model-schema"
 
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "hexgrad/Kokoro-82M": {
         "usd_per_million_chars": 0.0,
         "default_voice": "af_bella",
@@ -104,7 +104,7 @@ SUPPORTED_MODELS = {
 
 RESPONSE_FORMATS = {"mp3", "wav", "pcm", "flac", "opus"}
 SERVICE_TIERS = {"default", "priority"}
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "response_format",
     "service_tier",
     "speed",
@@ -144,6 +144,11 @@ MODEL_LIMITATIONS = {
 
 DEFAULT_MODEL = "hexgrad/Kokoro-82M"
 DEFAULT_VOICE = "af_bella"
+_UNKNOWN_MODEL_METADATA = {
+    "usd_per_million_chars": 0.0,
+    "default_voice": DEFAULT_VOICE,
+    "operational_char_limit": 1800,
+}
 
 
 def generate(
@@ -154,13 +159,9 @@ def generate(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Generate speech with DeepInfra TTS. See `synthesize/docs/deepinfra.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(
-            f"Unsupported DeepInfra TTS model '{model}'. Supported models: {supported}."
-        )
-
-    options = reject_unknown_kwargs("DeepInfra", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("DeepInfra", model, kwargs, DOCUMENTED_KWARGS)
     response_format = str(options.pop("response_format", "mp3")).strip().lower()
     validate_choice(response_format, RESPONSE_FORMATS, parameter_name="response_format", provider="DeepInfra", model=model)
     service_tier = str(options.pop("service_tier", "default")).strip().lower()
@@ -172,7 +173,6 @@ def generate(
         raise TypeError("DeepInfra extra_body must be a dictionary when provided.")
 
     api_key = ensure_env_var("DEEPINFRA_API_KEY")
-    model_config = SUPPORTED_MODELS[model]
     chosen_voice = _resolve_voice(model, voice)
     text_chunks = chunk_text_for_provider(text, model_config["operational_char_limit"])
     resolved_locale = resolve_locale(normalize_language_code(language_code))
@@ -234,13 +234,15 @@ def generate(
         )
 
     result = _finalize_synthesis_output(chunk_records, cost_usd=0.0)
-    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost)
+    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost) if documented_model else 0.0
+    if not documented_model:
+        result["warnings"] = f"No documented pricing metadata is available for DeepInfra model `{model}`."
     return result
 
 
 def _resolve_voice(model: str, voice: str) -> str:
     """Choose the safest DeepInfra voice for the selected model."""
-    model_default = str(SUPPORTED_MODELS[model]["default_voice"]).strip()
+    model_default = str(DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)["default_voice"]).strip()
     chosen_voice = str(voice or "").strip() or model_default
     if model != DEFAULT_MODEL and chosen_voice == DEFAULT_VOICE:
         return model_default
@@ -259,7 +261,7 @@ def _build_extra_body(options: dict[str, Any], extra_body: dict[str, Any] | None
 
 def _default_model_extra_body(model: str, language_code: str) -> dict[str, Any]:
     """Return model-specific DeepInfra defaults that are needed for valid output."""
-    model_config = SUPPORTED_MODELS[model]
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
     defaults: dict[str, Any] = {}
     if "default_language_id" in model_config:
         defaults["language_id"] = resolve_language_code(
@@ -284,7 +286,7 @@ __all__ = [
     "MODELS_URL",
     "RESPONSE_FORMATS",
     "SCHEMA_URL",
-    "SUPPORTED_MODELS",
+    "DOCUMENTED_MODELS",
     "discover_catalog",
     "generate",
 ]

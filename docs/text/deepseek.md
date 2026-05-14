@@ -5,7 +5,7 @@
 - Raw generation endpoint: `POST https://api.deepseek.com/chat/completions`.
 - Live catalog endpoint: `GET https://api.deepseek.com/models`.
 - The project abstracts credential loading, message construction, parameter validation, streaming accumulation, result normalization, and local cost estimation where available.
-- Provider-native kwargs are forwarded directly after validation; unsupported kwargs fail before credentials are read.
+- Provider-native kwargs are forwarded directly; documented parameters are reference metadata, and provider rejections are returned through the normalized public error shape.
 
 ## B. Account and access
 - Create account / console: https://platform.deepseek.com/

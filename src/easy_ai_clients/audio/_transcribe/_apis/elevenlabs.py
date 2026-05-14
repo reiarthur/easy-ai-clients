@@ -27,15 +27,16 @@ from ..post_processing import _build_transcription_bundle, build_raw_transcripti
 from ..pre_processing import build_request_audio
 
 API_URL = "https://api.elevenlabs.io/v1/speech-to-text"
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "scribe_v1": {"price_per_hour": 0.22},
     "scribe_v2": {"price_per_hour": 0.22},
 }
+_UNKNOWN_MODEL_METADATA = {"price_per_hour": 0.0}
 ENTITY_DETECTION_PRICE_PER_HOUR = 0.070
 KEYTERM_PROMPTING_PRICE_PER_HOUR = 0.050
 TIMESTAMP_GRANULARITIES = {"word", "character", "none"}
 ENTITY_REDACTION_MODES = {"redacted", "entity_type", "enumerated_entity_type"}
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "language_code",
     "diarize",
     "num_speakers",
@@ -60,11 +61,8 @@ def transcribe(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Transcribe audio with ElevenLabs. See `transcribe/docs/elevenlabs.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported_models = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported ElevenLabs model '{model}'. Supported models: {supported_models}.")
-
-    options = reject_unknown_kwargs("ElevenLabs", model, kwargs, SUPPORTED_KWARGS)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("ElevenLabs", model, kwargs, DOCUMENTED_KWARGS)
     language_code = options.pop("language_code", None)
     diarize = bool(options.pop("diarize", True))
     num_speakers = options.pop("num_speakers", None)
@@ -81,14 +79,8 @@ def transcribe(
     enable_logging = bool(options.pop("enable_logging", True))
     language_mkd = options.pop("language_mkd", "en")
     timeout_seconds = float(options.pop("timeout_seconds", 300))
-    if language_code and model != "scribe_v2":
-        raise ValueError("ElevenLabs language_code is only supported with model 'scribe_v2'.")
-    if no_verbatim and model != "scribe_v2":
-        raise ValueError("ElevenLabs no_verbatim is only supported with model 'scribe_v2'.")
     if diarization_threshold is not None:
         validate_number_range(diarization_threshold, parameter_name="diarization_threshold", provider="ElevenLabs", model=model, minimum=0.1, maximum=0.4)
-        if not diarize or num_speakers is not None:
-            raise ValueError("ElevenLabs diarization_threshold requires diarize=True and num_speakers omitted.")
     if entity_redaction_mode is not None:
         validate_choice(entity_redaction_mode, ENTITY_REDACTION_MODES, parameter_name="entity_redaction_mode", provider="ElevenLabs", model=model)
 
@@ -128,6 +120,9 @@ def transcribe(
         keyterm_text = str(keyterm or "").strip()
         if keyterm_text:
             form_fields.append(("keyterms", keyterm_text))
+    for key, value in options.items():
+        if value not in (None, "", [], {}):
+            form_fields.append((key, value))
 
     response = request_with_retries(
         "POST",
@@ -185,14 +180,17 @@ def transcribe(
         model=model,
         entity_detection=entity_detection,
         keyterms=keyterms,
-    )
+    ) if documented_model else 0.0
     return _build_transcription_bundle(
         raw_payload,
         language_mkd=language_mkd,
         request_id=payload.get("transcription_id"),
         cost_usd=cost_usd,
-        cost_source="official_pricing_table",
+        cost_source="official_pricing_table" if documented_model else "unavailable",
         cost_is_estimated=True,
+        cost_lookup_error=None
+        if documented_model
+        else f"No documented pricing metadata is available for ElevenLabs model `{model}`.",
     )
 
 
@@ -201,7 +199,7 @@ def _compute_elevenlabs_cost(duration_seconds, *, model, entity_detection=None, 
     minimum_seconds = 20.0 if len(list(keyterms or [])) > 100 else 0.0
     base_cost = compute_cost_by_duration(
         duration_seconds,
-        unit_price=SUPPORTED_MODELS[model]["price_per_hour"],
+        unit_price=DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)["price_per_hour"],
         billing_unit="hour",
         minimum_seconds=minimum_seconds,
     )

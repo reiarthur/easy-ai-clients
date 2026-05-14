@@ -25,7 +25,7 @@ MODELS_URL = "https://ai.google.dev/gemini-api/docs/models"
 GUIDE_URL = "https://ai.google.dev/gemini-api/docs/speech-generation"
 PRICING_URL = "https://ai.google.dev/gemini-api/docs/pricing"
 
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "gemini-2.5-flash-preview-tts": {
         "input_price_per_million_tokens": 0.50,
         "output_audio_price_per_million_tokens": 10.0,
@@ -75,10 +75,16 @@ VOICE_NAMES = {
     "Zephyr",
     "Zubenelgenubi",
 }
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "multi_speaker_voice_config",
     "speaker_voice_configs",
     "timeout_seconds",
+}
+
+_UNKNOWN_MODEL_METADATA = {
+    "input_price_per_million_tokens": 0.0,
+    "output_audio_price_per_million_tokens": 0.0,
+    "operational_char_limit": 3200,
 }
 
 
@@ -90,11 +96,9 @@ def generate(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Generate speech with Google Gemini TTS. See `synthesize/docs/google.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported Gemini TTS model '{model}'. Supported models: {supported}.")
-
-    options = reject_unknown_kwargs("Google", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("Google", model, kwargs, DOCUMENTED_KWARGS)
     validate_choice(voice, VOICE_NAMES, parameter_name="voice", provider="Google", model=model)
     timeout_seconds = float(options.pop("timeout_seconds", 180.0))
     multi_speaker_voice_config = options.pop("multi_speaker_voice_config", None)
@@ -103,7 +107,6 @@ def generate(
         raise ValueError("Google Gemini TTS accepts either multi_speaker_voice_config or speaker_voice_configs, not both.")
 
     api_key = ensure_env_var("GOOGLE_API_KEY")
-    model_config = SUPPORTED_MODELS[model]
     text_chunks = chunk_text_for_provider(text, model_config["operational_char_limit"])
     resolved_locale = resolve_locale(normalize_language_code(language_code))
 
@@ -122,6 +125,7 @@ def generate(
                 ),
             },
         }
+        payload.update({key: value for key, value in options.items() if value is not None})
         response = request_with_retries(
             "POST",
             API_URL_TEMPLATE.format(model=model),
@@ -142,7 +146,9 @@ def generate(
         total_tts_cost += _compute_google_tts_cost(payload_json, model_config)
 
     result = _finalize_synthesis_output(chunk_records, cost_usd=0.0)
-    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost)
+    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost) if documented_model else 0.0
+    if not documented_model:
+        result["warnings"] = f"No documented pricing metadata is available for Google model `{model}`."
     return result
 
 
@@ -256,7 +262,7 @@ __all__ = [
     "GUIDE_URL",
     "MODELS_URL",
     "PRICING_URL",
-    "SUPPORTED_MODELS",
+    "DOCUMENTED_MODELS",
     "VOICE_NAMES",
     "generate",
 ]

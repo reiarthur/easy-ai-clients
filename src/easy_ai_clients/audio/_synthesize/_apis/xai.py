@@ -23,7 +23,7 @@ API_URL = "https://api.x.ai/v1/tts"
 MODELS_URL = "https://docs.x.ai/developers/models/text-to-speech"
 PRICING_URL = "https://docs.x.ai/developers/models"
 
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "text-to-speech": {
         "usd_per_million_chars": 4.2,
         "operational_char_limit": 2200,
@@ -57,7 +57,11 @@ LANGUAGES = {
 CODECS = {"mp3", "wav", "pcm", "mulaw", "ulaw", "alaw"}
 SAMPLE_RATES = {8000, 16000, 22050, 24000, 44100, 48000}
 BIT_RATES = {32000, 64000, 96000, 128000, 192000}
-SUPPORTED_KWARGS = {"codec", "sample_rate", "bit_rate", "text_normalization", "timeout_seconds"}
+DOCUMENTED_KWARGS = {"codec", "sample_rate", "bit_rate", "text_normalization", "timeout_seconds"}
+_UNKNOWN_MODEL_METADATA = {
+    "usd_per_million_chars": 0.0,
+    "operational_char_limit": 2200,
+}
 
 
 def generate(
@@ -68,11 +72,9 @@ def generate(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Generate speech with xAI TTS. See `synthesize/docs/xai.md`."""
-    if model not in SUPPORTED_MODELS:
-        supported = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported xAI TTS surface '{model}'. Supported values: {supported}.")
-
-    options = reject_unknown_kwargs("xAI", model, kwargs, SUPPORTED_KWARGS)
+    model_config = DOCUMENTED_MODELS.get(model, _UNKNOWN_MODEL_METADATA)
+    documented_model = model in DOCUMENTED_MODELS
+    options = reject_unknown_kwargs("xAI", model, kwargs, DOCUMENTED_KWARGS)
     codec = str(options.pop("codec", "mp3")).strip().lower()
     if codec == "ulaw":
         codec = "mulaw"
@@ -88,13 +90,10 @@ def generate(
     if bit_rate is not None:
         bit_rate = int(bit_rate)
         validate_choice(bit_rate, BIT_RATES, parameter_name="bit_rate", provider="xAI", model=model)
-        if codec != "mp3":
-            raise ValueError("xAI bit_rate is only valid when codec='mp3'.")
     text_normalization = options.pop("text_normalization", None)
     timeout_seconds = float(options.pop("timeout_seconds", 180.0))
 
     api_key = ensure_env_var("XAI_API_KEY")
-    model_config = SUPPORTED_MODELS[model]
     text_chunks = chunk_text_for_provider(text, model_config["operational_char_limit"])
     alignment_locale = resolve_locale(resolved_locale)
 
@@ -103,6 +102,7 @@ def generate(
     total_tts_cost = 0.0
     for chunk_text in text_chunks:
         payload: dict[str, Any] = {
+            "model": model,
             "text": chunk_text,
             "voice": voice,
             "language": resolved_locale,
@@ -114,6 +114,7 @@ def generate(
             payload["bit_rate"] = int(bit_rate)
         if text_normalization is not None:
             payload["text_normalization"] = bool(text_normalization)
+        payload.update({key: value for key, value in options.items() if value is not None})
 
         response = request_with_retries(
             "POST",
@@ -148,7 +149,9 @@ def generate(
         )
 
     result = _finalize_synthesis_output(chunk_records, cost_usd=0.0)
-    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost)
+    result["cost_usd"] = round_cost(total_tts_cost + total_alignment_cost) if documented_model else 0.0
+    if not documented_model:
+        result["warnings"] = f"No documented pricing metadata is available for xAI model `{model}`."
     return result
 
 
@@ -171,7 +174,7 @@ __all__ = [
     "MODELS_URL",
     "PRICING_URL",
     "SAMPLE_RATES",
-    "SUPPORTED_MODELS",
+    "DOCUMENTED_MODELS",
     "VOICES",
     "generate",
 ]

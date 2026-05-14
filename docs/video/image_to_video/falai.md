@@ -51,6 +51,12 @@ Validated values: `duration` `5` or `10`, and `aspect_ratio` `16:9`, `9:16`, or 
 
 ## Model Coverage
 
+2026-05-14 update: the adapter now submits all listed fal.ai image/reference-to-video
+endpoints through the queue API when selected with `model=...`. Older notes that
+say a candidate is not selected as the default are still true for default
+selection, but those models are no longer blocked locally. Cost is estimated only
+for documented units whose billable quantity is known.
+
 | Model or endpoint | Official source | Status | Implemented default | Notes |
 | --- | --- | --- | --- | --- |
 | `fal-ai/kling-video/v1.6/pro/image-to-video` | https://fal.ai/models/fal-ai/kling-video/v1.6/pro/image-to-video/api | `implemented` | yes | Estimated at `$0.098/s`. |
@@ -90,7 +96,7 @@ print(result["cost_usd"])
 
 ## Pricing Notes
 
-The wrapper estimates `cost_usd` as `$0.098 * duration`. Usage reconciliation is not performed during safe validation, so `cost_is_estimated=True`.
+The wrapper estimates `cost_usd` as `$0.098 * duration` for the default model. If `billing_unit_quantity` or `unit_quantity` is supplied, the wrapper calls fal.ai's official pricing estimate API and reports `cost_source="fal_pricing_estimate_api"`. Usage reconciliation is not performed during safe validation, so `cost_is_estimated=True`.
 
 ## Validation Note
 

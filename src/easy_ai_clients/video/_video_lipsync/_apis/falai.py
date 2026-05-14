@@ -22,7 +22,7 @@ ENV_NAME = "FAL_KEY"
 DEFAULT_MODEL = "fal-ai/infinitalk/video-to-video"
 COST_SOURCE = "fal_model_pricing_seconds_snapshot_2026-05-13"
 
-MODEL_OPTIONS = {
+DOCUMENTED_MODEL_OPTIONS = {
     DEFAULT_MODEL: {
         "prompt",
         "num_frames",
@@ -38,14 +38,12 @@ COMMON_OPTIONS = {"model", "timeout_seconds", "poll_interval_seconds", "extra_pa
 
 
 def _selected_model(kwargs):
-    model = kwargs.get("model", DEFAULT_MODEL)
-    if model not in MODEL_OPTIONS:
-        raise ValueError(f"Unsupported fal.ai video lip-sync model: {model}.")
-    return model
+    return kwargs.get("model", DEFAULT_MODEL)
 
 
 def _build_payload(model, prepared, kwargs):
-    validate_allowed_kwargs(kwargs, MODEL_OPTIONS[model], model, PROVIDER, "video_lipsync", COMMON_OPTIONS)
+    documented_options = DOCUMENTED_MODEL_OPTIONS.get(model, set())
+    validate_allowed_kwargs(kwargs, documented_options, model, PROVIDER, "video_lipsync", COMMON_OPTIONS)
     validate_enum("resolution", kwargs.get("resolution"), ["480p", "720p"], PROVIDER, model)
     validate_enum("acceleration", kwargs.get("acceleration"), ["none", "regular", "high"], PROVIDER, model)
     validate_number("num_frames", kwargs.get("num_frames"), 41, 241, PROVIDER, model)
@@ -58,6 +56,9 @@ def _build_payload(model, prepared, kwargs):
     for name in ("num_frames", "resolution", "seed", "acceleration"):
         if name in kwargs and kwargs[name] is not None:
             payload[name] = kwargs[name]
+    for name, value in kwargs.items():
+        if name not in COMMON_OPTIONS and name not in payload and value is not None:
+            payload[name] = value
     if "extra_payload" in kwargs:
         from ..._shared import merge_extra_payload
 
@@ -66,6 +67,13 @@ def _build_payload(model, prepared, kwargs):
 
 
 def _cost(model, kwargs):
+    if model not in DOCUMENTED_MODEL_OPTIONS:
+        return {
+            "cost_usd": 0.0,
+            "cost_is_estimated": True,
+            "cost_source": "unavailable",
+            "cost_reason": f"No documented pricing metadata is available for fal.ai model `{model}`.",
+        }
     if kwargs.get("billing_duration_seconds") is not None:
         duration_seconds = float(kwargs.get("billing_duration_seconds"))
     elif kwargs.get("duration_seconds") is not None:
@@ -120,8 +128,6 @@ def generate_video_lipsync(video_path=None, video_url=None, audio_path=None, aud
 
 def get_generation_status(request_id, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
-    if model not in MODEL_OPTIONS:
-        raise ValueError(f"Unsupported fal.ai video lip-sync model: {model}.")
     api_key = require_env(ENV_NAME, "fal.ai")
     raw = fal_get_status(model, request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
     return {"provider": PROVIDER, "model": model, "request_id": request_id, "status": normalize_fal_status(raw.get("status")), "raw_response": raw}
@@ -129,8 +135,6 @@ def get_generation_status(request_id, **kwargs):
 
 def get_generation_result(request_id, output_path=None, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
-    if model not in MODEL_OPTIONS:
-        raise ValueError(f"Unsupported fal.ai video lip-sync model: {model}.")
     cost = _cost(model, kwargs)
     api_key = require_env(ENV_NAME, "fal.ai")
     raw = fal_get_result(model, request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))

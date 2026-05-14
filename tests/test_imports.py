@@ -51,7 +51,11 @@ def test_video_dispatchers_callable():
     assert callable(video.generate)
     assert callable(video.text_to_video)
     assert callable(video.image_to_video)
+    assert callable(video.video_to_video)
     assert callable(video.motion_control)
+    assert callable(video.avatar_video)
+    assert callable(video.video_with_audio)
+    assert callable(video.create_avatar)
     assert callable(video.image_lipsync)
     assert callable(video.video_lipsync)
     assert callable(video.get_status)
@@ -59,7 +63,11 @@ def test_video_dispatchers_callable():
     assert callable(video.download)
     assert isinstance(video.available_text_to_video_apis(), tuple)
     assert isinstance(video.available_image_to_video_apis(), tuple)
+    assert isinstance(video.available_video_to_video_apis(), tuple)
     assert isinstance(video.available_motion_control_apis(), tuple)
+    assert isinstance(video.available_avatar_video_apis(), tuple)
+    assert isinstance(video.available_video_with_audio_apis(), tuple)
+    assert isinstance(video.available_create_avatar_apis(), tuple)
     assert isinstance(video.available_image_lipsync_apis(), tuple)
     assert isinstance(video.available_video_lipsync_apis(), tuple)
 
@@ -96,9 +104,13 @@ def test_video_dispatchers_callable():
             "anthropic", "falai", "fireworks", "google", "groq",
             "openai", "openrouter", "together", "xai",
         )),
-        ("video", "_text_to_video._apis", ("falai", "google", "runway")),
-        ("video", "_image_to_video._apis", ("falai", "google", "runway")),
-        ("video", "_motion_control._apis", ("falai", "runway")),
+        ("video", "_text_to_video._apis", ("falai", "google", "hedra", "runway")),
+        ("video", "_image_to_video._apis", ("falai", "google", "hedra", "runway")),
+        ("video", "_video_to_video._apis", ("falai", "google", "hedra", "runway")),
+        ("video", "_motion_control._apis", ("falai", "hedra", "runway")),
+        ("video", "_avatar_video._apis", ("falai", "hedra", "runway")),
+        ("video", "_video_with_audio._apis", ("hedra",)),
+        ("video", "_create_avatar._apis", ("runway",)),
         ("video", "_image_lipsync._apis", ("falai",)),
         ("video", "_video_lipsync._apis", ("falai",)),
     ],
@@ -110,33 +122,34 @@ def test_provider_modules_import(modality, operation, providers):
         )
 
 
-def test_unknown_api_raises():
+def test_unknown_api_returns_normalized_error():
     from easy_ai_clients import audio, image, text, video
 
-    with pytest.raises(ValueError):
-        text.generate("hi", api="bogus")
-    with pytest.raises(ValueError):
-        audio.generate("hi", api="bogus")
-    with pytest.raises(ValueError):
-        audio.transcribe("hi.mp3", api="bogus")
-    with pytest.raises(ValueError):
-        image.generate("hi", api="bogus")
-    with pytest.raises(ValueError):
-        image.edit("hi", "img.png", api="bogus")
-    with pytest.raises(ValueError):
-        image.remix("hi", ["img.png"], api="bogus")
-    with pytest.raises(ValueError):
-        image.analyze("hi", "img.png", api="bogus")
-    with pytest.raises(ValueError):
-        video.generate("hi", api="bogus")
-    with pytest.raises(ValueError):
-        video.image_to_video("hi", "img.png", api="bogus")
-    with pytest.raises(ValueError):
-        video.motion_control(image="img.png", video="motion.mp4", api="bogus")
-    with pytest.raises(ValueError):
-        video.image_lipsync(image="img.png", audio="voice.wav", api="bogus")
-    with pytest.raises(ValueError):
-        video.video_lipsync(video="speaker.mp4", audio="voice.wav", api="bogus")
+    results = [
+        text.generate("hi", api="bogus"),
+        audio.generate("hi", api="bogus"),
+        audio.transcribe("hi.mp3", api="bogus"),
+        image.generate("hi", api="bogus"),
+        image.edit("hi", "img.png", api="bogus"),
+        image.remix("hi", ["img.png"], api="bogus"),
+        image.analyze("hi", "img.png", api="bogus"),
+        video.generate("hi", api="bogus"),
+        video.image_to_video("hi", "img.png", api="bogus"),
+        video.video_to_video("hi", video="source.mp4", api="bogus"),
+        video.motion_control(image="img.png", video="motion.mp4", api="bogus"),
+        video.avatar_video(avatar="avatar-id", text="hi", api="bogus"),
+        video.video_with_audio(video="source.mp4", prompt="add music", api="bogus"),
+        video.create_avatar(image="avatar.png", name="Agent", voice="clara", api="bogus"),
+        video.image_lipsync(image="img.png", audio="voice.wav", api="bogus"),
+        video.video_lipsync(video="speaker.mp4", audio="voice.wav", api="bogus"),
+    ]
+
+    assert all(item["error"]["provider"] == "bogus" for item in results)
+    assert results[0]["output_text"] == ""
+    assert results[1]["audio"] is None
+    assert results[2]["text"] == ""
+    assert results[3]["base64"] == ""
+    assert results[-1]["status"] == "failed"
 
 
 def test_missing_api_raises():

@@ -13,6 +13,8 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+from .._error_utils import attach_error, error_message
+
 __all__ = [
     "generate",
     "transcribe",
@@ -100,13 +102,27 @@ def generate(text, model=None, voice=None, language_code="en", *, api, **kwargs)
       `words` fields.
     """
 
-    module = _load_synthesize(api)
-    arguments: dict[str, Any] = {"language_code": language_code, **kwargs}
-    if model is not None:
-        arguments["model"] = model
-    if voice is not None:
-        arguments["voice"] = voice
-    return module.generate(text, **arguments)
+    try:
+        module = _load_synthesize(api)
+        arguments: dict[str, Any] = {"language_code": language_code, **kwargs}
+        if model is not None:
+            arguments["model"] = model
+        if voice is not None:
+            arguments["voice"] = voice
+        return module.generate(text, **arguments)
+    except Exception as exc:
+        return attach_error(
+            {
+                "cost_usd": 0.0,
+                "audio": None,
+                "words": {},
+                "warnings": error_message(exc),
+            },
+            exc,
+            provider=api,
+            operation="generate",
+            model=model,
+        )
 
 
 def transcribe(audio_input, model=None, *, api, **kwargs):
@@ -124,10 +140,32 @@ def transcribe(audio_input, model=None, *, api, **kwargs):
       cost metadata.
     """
 
-    module = _load_transcribe(api)
-    if model is None:
-        return module.transcribe(audio_input, **kwargs)
-    return module.transcribe(audio_input, model=model, **kwargs)
+    try:
+        module = _load_transcribe(api)
+        if model is None:
+            return module.transcribe(audio_input, **kwargs)
+        return module.transcribe(audio_input, model=model, **kwargs)
+    except Exception as exc:
+        message = error_message(exc)
+        return attach_error(
+            {
+                "text": "",
+                "words": {},
+                "segments": {},
+                "silences": {},
+                "provider_metadata": {},
+                "request_id": None,
+                "cost_usd": 0.0,
+                "cost_source": "unavailable",
+                "cost_is_estimated": False,
+                "cost_lookup_error": message,
+                "warnings": message,
+            },
+            exc,
+            provider=api,
+            operation="transcribe",
+            model=model,
+        )
 
 
 def update_cost(operation, result, *, api):

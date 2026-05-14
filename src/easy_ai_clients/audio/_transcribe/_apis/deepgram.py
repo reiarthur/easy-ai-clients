@@ -28,7 +28,7 @@ from ._shared import compute_cost_by_duration, round_cost
 
 MAX_CONCURRENT_NOVA_PRERECORDED = 50
 MAX_CONCURRENT_WHISPER_PRERECORDED = 3
-SUPPORTED_MODELS = {
+DOCUMENTED_MODELS = {
     "nova-3",
     "nova-3-general",
     "nova-3-medical",
@@ -63,7 +63,7 @@ SUPPORTED_MODELS = {
     "whisper-medium",
     "whisper-large",
 }
-SUPPORTED_KWARGS = {
+DOCUMENTED_KWARGS = {
     "fallback_model",
     "concurrency",
     "language",
@@ -138,8 +138,6 @@ def transcribe(
     should_detect_entities = bool(detect_entities)
     if detect_entities is None:
         should_detect_entities = resolved_language.lower().startswith("en") and not _is_whisper_model(primary_model)
-    if should_detect_entities and _is_whisper_model(primary_model):
-        raise ValueError("Deepgram detect_entities is not supported for Whisper transcription models.")
 
     audio = load_audio(audio_input)
     spans = build_balanced_spans(audio)
@@ -885,7 +883,7 @@ def _resolve_deepgram_cost_metadata(
         }
 
     return {
-        "cost_usd": None,
+        "cost_usd": 0.0,
         "cost_source": "unavailable",
         "cost_is_estimated": False,
         "cost_lookup_error": lookup_error or "Deepgram exact usage lookup is required for this model family.",
@@ -893,20 +891,14 @@ def _resolve_deepgram_cost_metadata(
 
 
 def _validate_model(model_name):
-    """Validate one Deepgram prerecorded model alias."""
-    if model_name not in SUPPORTED_MODELS:
-        supported = ", ".join(sorted(SUPPORTED_MODELS))
-        raise ValueError(f"Unsupported Deepgram model '{model_name}'. Supported models: {supported}.")
+    """Keep documented Deepgram model aliases as metadata, not an acceptance gate."""
+
+    return None
 
 
 def _reject_unknown_kwargs(model, kwargs):
-    """Reject unsupported Deepgram public kwargs."""
-    unexpected = sorted(set(dict(kwargs or {})) - SUPPORTED_KWARGS)
-    if unexpected:
-        raise TypeError(
-            f"Unsupported Deepgram transcription parameter(s) for model '{model}': {', '.join(unexpected)}. "
-            f"Supported kwargs: {', '.join(sorted(SUPPORTED_KWARGS))}."
-        )
+    """Return kwargs unchanged so new Deepgram query parameters can pass through."""
+
     return dict(kwargs or {})
 
 
@@ -914,13 +906,6 @@ def _normalize_extra_request_params(options):
     """Return official Deepgram Listen parameters not handled by shared defaults."""
     params = {}
     for key, value in dict(options or {}).items():
-        if key in {"callback_method", "custom_topic_mode", "custom_intent_mode"}:
-            allowed = {"callback_method": {"POST", "PUT"}, "custom_topic_mode": {"extended", "strict"}, "custom_intent_mode": {"extended", "strict"}}[key]
-            normalized = _clean_text(value)
-            if normalized not in allowed:
-                raise ValueError(f"Unsupported Deepgram {key} value '{value}'. Supported values: {', '.join(sorted(allowed))}.")
-            params[key] = normalized
-            continue
         params[key] = value
     return params
 

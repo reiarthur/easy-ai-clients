@@ -21,7 +21,7 @@ DEFAULT_MODEL = "gen4_turbo"
 COST_SOURCE = "runway_api_pricing_credits_snapshot_2026-05-13"
 CREDIT_TO_USD = 0.01
 
-MODEL_DATA = {
+DOCUMENTED_MODEL_DATA = {
     "gen4.5": {"credits_per_second": 12, "durations": "range", "default_duration": 5, "ratios": ["1280:720", "720:1280", "1104:832", "960:960", "832:1104", "1584:672"], "supports_seed": True, "supports_audio": False, "supports_last_image": False},
     "gen4_turbo": {"credits_per_second": 5, "durations": "range", "default_duration": 5, "ratios": ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672"], "supports_seed": True, "supports_audio": False, "supports_last_image": False},
     "gen3a_turbo": {"credits_per_second": 5, "durations": [5, 10], "default_duration": 10, "ratios": ["768:1280", "1280:768"], "supports_seed": True, "supports_audio": False, "supports_last_image": True},
@@ -30,41 +30,32 @@ MODEL_DATA = {
     "veo3.1_fast": {"credits_per_second": 10, "audio_credits_per_second": 15, "durations": [4, 6, 8], "default_duration": 4, "ratios": ["1280:720", "720:1280", "1080:1920", "1920:1080"], "supports_seed": False, "supports_audio": True, "supports_last_image": True},
 }
 
-MODEL_OPTIONS = {
+DOCUMENTED_MODEL_OPTIONS = {
     name: {"ratio", "duration", "seed", "audio", "content_moderation", "public_figure_threshold", "last_image_url"}
-    for name in MODEL_DATA
+    for name in DOCUMENTED_MODEL_DATA
 }
 
 COMMON_OPTIONS = {"model", "timeout_seconds", "poll_interval_seconds", "extra_payload"}
 
 
 def _selected_model(kwargs):
-    model = kwargs.get("model", DEFAULT_MODEL)
-    if model not in MODEL_DATA:
-        raise ValueError(f"Unsupported Runway image-to-video model: {model}.")
-    return model
+    return kwargs.get("model", DEFAULT_MODEL)
 
 
 def _duration(model, kwargs):
-    value = kwargs.get("duration", MODEL_DATA[model]["default_duration"])
-    if MODEL_DATA[model]["durations"] == "range":
+    if model not in DOCUMENTED_MODEL_DATA:
+        return kwargs.get("duration", 5)
+    value = kwargs.get("duration", DOCUMENTED_MODEL_DATA[model]["default_duration"])
+    if DOCUMENTED_MODEL_DATA[model]["durations"] == "range":
         parsed = float(value)
-        if parsed < 2 or parsed > 10:
-            raise ValueError(f"Invalid duration for Runway model {model}: {value}. Expected 2 to 10 seconds.")
-        if not parsed.is_integer():
-            raise ValueError(f"Invalid duration for Runway model {model}: {value}. Expected an integer from 2 to 10 seconds.")
-        return int(parsed)
+        return int(parsed) if parsed.is_integer() else parsed
     parsed = int(value)
-    allowed = MODEL_DATA[model]["durations"]
-    if parsed not in allowed:
-        joined = ", ".join(str(item) for item in allowed)
-        raise ValueError(f"Invalid duration for Runway model {model}: {value}. Allowed values: {joined}.")
     return parsed
 
 
 def _ratio(model, kwargs):
-    ratio = kwargs.get("ratio", MODEL_DATA[model]["ratios"][0])
-    validate_enum("ratio", ratio, MODEL_DATA[model]["ratios"], PROVIDER, model)
+    ratio = kwargs.get("ratio", DOCUMENTED_MODEL_DATA.get(model, {"ratios": ["1280:720"]})["ratios"][0])
+    validate_enum("ratio", ratio, DOCUMENTED_MODEL_DATA.get(model, {"ratios": []})["ratios"], PROVIDER, model)
     return ratio
 
 
@@ -79,7 +70,7 @@ def _content_moderation(model, kwargs):
 
 
 def _audio(model, kwargs):
-    if not MODEL_DATA[model]["supports_audio"]:
+    if model in DOCUMENTED_MODEL_DATA and not DOCUMENTED_MODEL_DATA[model]["supports_audio"]:
         return None
     return bool(kwargs.get("audio", False))
 
@@ -88,18 +79,12 @@ def _prompt_image(model, prepared, kwargs):
     first_image = prepared["image"]
     last_image = kwargs.get("last_image_url")
     if last_image:
-        if not MODEL_DATA[model]["supports_last_image"]:
-            raise ValueError(f"last_image_url is not supported for Runway image-to-video model {model}.")
         return [{"uri": first_image, "position": "first"}, {"uri": last_image, "position": "last"}]
     return first_image
 
 
 def _build_payload(model, prepared, kwargs):
-    validate_allowed_kwargs(kwargs, MODEL_OPTIONS[model], model, PROVIDER, "image_to_video", COMMON_OPTIONS)
-    if kwargs.get("seed") is not None and not MODEL_DATA[model]["supports_seed"]:
-        raise ValueError(f"seed is not supported for Runway image-to-video model {model}.")
-    if kwargs.get("audio") is not None and not MODEL_DATA[model]["supports_audio"]:
-        raise ValueError(f"audio is not supported for Runway image-to-video model {model}.")
+    validate_allowed_kwargs(kwargs, DOCUMENTED_MODEL_OPTIONS.get(model, set()), model, PROVIDER, "image_to_video", COMMON_OPTIONS)
     validate_number("seed", kwargs.get("seed"), 0, 4294967295, PROVIDER, model)
     payload = {
         "model": model,
@@ -116,6 +101,9 @@ def _build_payload(model, prepared, kwargs):
     moderation = _content_moderation(model, kwargs)
     if moderation is not None:
         payload["contentModeration"] = moderation
+    for name, value in kwargs.items():
+        if name not in COMMON_OPTIONS and name not in payload and value is not None:
+            payload[name] = value
     if "extra_payload" in kwargs:
         from ..._shared import merge_extra_payload
 
@@ -124,9 +112,18 @@ def _build_payload(model, prepared, kwargs):
 
 
 def _cost(model, kwargs):
+    if model not in DOCUMENTED_MODEL_DATA:
+        return {
+            "cost_usd": 0.0,
+            "cost_is_estimated": True,
+            "cost_source": "unavailable",
+            "cost_credits": 0.0,
+            "credit_source": "unavailable",
+            "cost_reason": f"No documented pricing metadata is available for Runway model `{model}`.",
+        }
     duration = _duration(model, kwargs)
     audio = bool(_audio(model, kwargs))
-    credits_per_second = MODEL_DATA[model].get("audio_credits_per_second") if audio else MODEL_DATA[model]["credits_per_second"]
+    credits_per_second = DOCUMENTED_MODEL_DATA[model].get("audio_credits_per_second") if audio else DOCUMENTED_MODEL_DATA[model]["credits_per_second"]
     credits = credits_per_second * duration
     return {
         "cost_usd": credits * CREDIT_TO_USD,

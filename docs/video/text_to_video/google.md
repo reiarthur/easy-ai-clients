@@ -42,7 +42,7 @@ Validated values include `aspect_ratio` `16:9` or `9:16`, model-specific duratio
 
 Google requires `duration_seconds=8` for 1080p and 4K output. When `resolution` is 1080p or 4K and `duration_seconds` is omitted, the wrapper uses 8 seconds by default.
 
-Unsupported kwargs are rejected. `extra_payload` may override the generated REST payload and should be used only after checking current Google docs.
+Documented kwargs are reference metadata only. Undocumented kwargs are forwarded; provider rejections are returned through the normalized public error shape. `extra_payload` may override the generated REST payload and should be used only after checking current Google docs.
 
 ## Model Coverage
 

@@ -42,16 +42,9 @@ def reject_unknown_kwargs(
     kwargs: Mapping[str, Any],
     allowed_names: Iterable[str],
 ) -> dict[str, Any]:
-    """Return kwargs as a dict after rejecting unsupported public parameters."""
-    normalized_kwargs = dict(kwargs or {})
-    allowed = {str(name) for name in allowed_names}
-    unexpected = sorted(set(normalized_kwargs) - allowed)
-    if unexpected:
-        raise TypeError(
-            f"Unsupported {provider} transcription parameter(s) for model '{model}': "
-            f"{', '.join(unexpected)}. Supported kwargs: {', '.join(sorted(allowed))}."
-        )
-    return normalized_kwargs
+    """Return kwargs unchanged; documented names are no longer an acceptance gate."""
+
+    return dict(kwargs or {})
 
 
 def validate_choice(
@@ -62,14 +55,8 @@ def validate_choice(
     provider: str,
     model: str,
 ) -> Any:
-    """Validate that a value is one of the supported provider choices."""
-    allowed = tuple(allowed_values)
-    if value not in allowed:
-        formatted = ", ".join(str(item) for item in allowed)
-        raise ValueError(
-            f"Unsupported {provider} transcription {parameter_name} for model '{model}': "
-            f"{value!r}. Supported values: {formatted}."
-        )
+    """Return a provider-native choice without applying a local whitelist."""
+
     return value
 
 
@@ -82,22 +69,11 @@ def validate_number_range(
     minimum: float | None = None,
     maximum: float | None = None,
 ) -> float:
-    """Validate one numeric transcription parameter range."""
+    """Coerce a numeric parameter when possible without enforcing provider ranges."""
     try:
-        number = float(value)
-    except (TypeError, ValueError) as error:
-        raise ValueError(
-            f"{provider} transcription parameter '{parameter_name}' for model '{model}' must be numeric."
-        ) from error
-    if minimum is not None and number < minimum:
-        raise ValueError(
-            f"{provider} transcription parameter '{parameter_name}' for model '{model}' must be >= {minimum}."
-        )
-    if maximum is not None and number > maximum:
-        raise ValueError(
-            f"{provider} transcription parameter '{parameter_name}' for model '{model}' must be <= {maximum}."
-        )
-    return number
+        return float(value)
+    except (TypeError, ValueError):
+        return value
 
 
 def build_http_error(response: requests.Response) -> requests.HTTPError:

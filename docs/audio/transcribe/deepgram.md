@@ -74,7 +74,7 @@ Returned cost fields:
 
 - Exact lookup success: `cost_usd=<exact total>`, `cost_source="usage_lookup"`, `cost_is_estimated=False`, `cost_lookup_error=None`.
 - Lookup failure for Nova-3 models: deterministic public pricing estimate, `cost_source="official_pricing_table"`, `cost_is_estimated=True`, and `cost_lookup_error` explains the failed lookup.
-- Lookup failure for older families: `cost_usd=None`, `cost_source="unavailable"`, `cost_is_estimated=False`, and `cost_lookup_error` explains why.
+- Lookup failure for older families or undocumented models: `cost_usd=0.0`, `cost_source="unavailable"`, and `cost_lookup_error` explains why.
 
 The lookup needs an API key with `usage:read`. Set `DEEPGRAM_PROJECT_ID` to avoid project discovery, or let the adapter list projects when the key has access.
 

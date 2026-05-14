@@ -47,7 +47,7 @@ Model-specific validation:
 | `veo3.1` | 4, 6, 8 | same Veo ratios | 20 credits/s without audio; 40 credits/s with audio. The wrapper sends `audio=False` when omitted. |
 | `veo3.1_fast` | 4, 6, 8 | same Veo ratios | 10 credits/s without audio; 15 credits/s with audio. The wrapper sends `audio=False` when omitted. |
 
-Runway's OpenAPI schema requires integer seconds for the `gen4.5` duration. Unsupported kwargs are rejected. `extra_payload` may bypass wrapper validation.
+Documented Runway schema details are used as defaults and pricing reference only. Undocumented kwargs are forwarded; provider rejections are returned through the normalized public error shape. `extra_payload` may override the generated REST payload.
 
 ## Model Coverage
 

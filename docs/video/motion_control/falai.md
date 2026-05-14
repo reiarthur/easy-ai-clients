@@ -46,6 +46,12 @@ Validated values: `character_orientation` must be `image` or `video`. `duration_
 
 ## Model Coverage
 
+2026-05-14 update: the adapter now forwards the listed fal.ai motion/reference
+models through the queue API. The Kling motion-control default keeps stricter
+input requirements (`image_url`, `video_url`, and `character_orientation`);
+adjacent reference/edit models are also exposed through `video.video_to_video`.
+Cost is estimated only when the documented billing unit can be calculated.
+
 | Model or endpoint | Official source | Status | Implemented default | Notes |
 | --- | --- | --- | --- | --- |
 | `fal-ai/kling-video/v2.6/standard/motion-control` | https://fal.ai/models/fal-ai/kling-video/v2.6/standard/motion-control/api | `implemented` | yes | Character image plus motion reference video. |
@@ -86,7 +92,7 @@ print(result["cost_usd"])
 
 ## Pricing Notes
 
-The wrapper estimates `cost_usd` as `$0.07 * duration_seconds`. `duration_seconds` is required because the queue submission response does not guarantee final billable duration.
+The wrapper estimates `cost_usd` as `$0.07 * duration_seconds` for the default model. `duration_seconds` is required because the queue submission response does not guarantee final billable duration. If `billing_unit_quantity` or `unit_quantity` is supplied, the wrapper calls fal.ai's official pricing estimate API and reports `cost_source="fal_pricing_estimate_api"`.
 
 ## Validation Note
 

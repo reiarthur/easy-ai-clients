@@ -37,7 +37,11 @@ image.available_remix_apis()
 image.available_analyze_apis()
 video.available_text_to_video_apis()
 video.available_image_to_video_apis()
+video.available_video_to_video_apis()
 video.available_motion_control_apis()
+video.available_avatar_video_apis()
+video.available_video_with_audio_apis()
+video.available_create_avatar_apis()
 video.available_image_lipsync_apis()
 video.available_video_lipsync_apis()
 ```
@@ -222,6 +226,35 @@ from_image = video.image_to_video(
     duration=5,
 )
 
+edited = video.video_to_video(
+    "Keep the framing but make the lighting warmer.",
+    video="source.mp4",
+    api="runway",
+    duration=5,
+)
+
+custom_avatar = video.create_avatar(
+    image="avatar.png",
+    name="Launch Host",
+    voice="clara",
+    api="runway",
+)
+
+avatar = video.avatar_video(
+    avatar_id=custom_avatar["avatar_id"],
+    text="Welcome to the launch.",
+    api="runway",
+    duration_seconds=6,
+)
+
+with_audio = video.video_with_audio(
+    video="source.mp4",
+    prompt="Add natural room tone.",
+    model="hedra-video-generation-model-id",
+    api="hedra",
+    sync=False,
+)
+
 talking_avatar = video.image_lipsync(
     image="avatar.png",
     audio="voice.wav",
@@ -249,8 +282,10 @@ metadata; pass the same operation name to `video.get_status`,
 
 ## Provider-Native Kwargs
 
-Extra keyword arguments are provider-native. Use the provider docs for accepted
-names and values:
+Extra keyword arguments are provider-native. The provider docs list models and
+parameters that have been analyzed, but that metadata is documentation and
+pricing/default reference, not a local acceptance list. New provider models or
+parameters can be passed before this library documents them.
 
 ```python
 from easy_ai_clients import image, text
@@ -270,9 +305,9 @@ image.generate(
 )
 ```
 
-Adapters reject unsupported kwargs when they have an explicit validation
-surface. Image generation/edit/remix operations may return provider-side errors
-inside `warnings` to preserve the normalized return shape.
+When a provider rejects a model or parameter, public operations return the
+normal result shape with safe empty output plus an `error` object where possible.
+Messages are sanitized before being exposed.
 
 ## Cost Updates
 
@@ -293,5 +328,6 @@ print(video_result["cost_is_estimated"])
 ```
 
 Cost helpers raise `NotImplementedError` when the selected provider does not
-support post-hoc cost lookup. Video adapters currently return estimated costs
-from provider pricing tables and validated generation parameters.
+support post-hoc cost lookup. Documented pricing metadata is used when known;
+unknown model or request costs are reported as `0.0` with
+`cost_source="unavailable"` and a warning or lookup-error reason.

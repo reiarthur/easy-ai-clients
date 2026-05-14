@@ -13,6 +13,8 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+from .._error_utils import attach_error, error_message
+
 __all__ = [
     "generate",
     "edit",
@@ -100,38 +102,120 @@ def generate(prompt, model=None, *, api, **kwargs):
     `request_id`. Provider-native options can be passed through ``**kwargs``.
     """
 
-    module = _load_module("generate", api, _GENERATE_APIS)
-    if model is None:
-        return module.generate(prompt, **kwargs)
-    return module.generate(prompt, model=model, **kwargs)
+    try:
+        module = _load_module("generate", api, _GENERATE_APIS)
+        if model is None:
+            result = module.generate(prompt, **kwargs)
+        else:
+            result = module.generate(prompt, model=model, **kwargs)
+        return _attach_image_warning_error(result, api, "generate", model)
+    except Exception as exc:
+        return _image_failure(exc, api=api, operation="generate", model=model)
 
 
 def edit(prompt, image, model=None, *, api, **kwargs):
     """Edit one image guided by a prompt and optional mask."""
 
-    module = _load_module("edit", api, _EDIT_APIS)
-    if model is None:
-        return module.edit(prompt, image, **kwargs)
-    return module.edit(prompt, image, model=model, **kwargs)
+    try:
+        module = _load_module("edit", api, _EDIT_APIS)
+        if model is None:
+            result = module.edit(prompt, image, **kwargs)
+        else:
+            result = module.edit(prompt, image, model=model, **kwargs)
+        return _attach_image_warning_error(result, api, "edit", model)
+    except Exception as exc:
+        return _image_failure(exc, api=api, operation="edit", model=model)
 
 
 def remix(prompt, reference_images, model=None, *, api, **kwargs):
     """Remix one prompt with reference images using the selected provider."""
 
-    module = _load_module("remix", api, _REMIX_APIS)
-    arguments: dict[str, Any] = dict(kwargs)
-    if model is not None:
-        arguments["model"] = model
-    return module.remix(prompt, reference_images, **arguments)
+    try:
+        module = _load_module("remix", api, _REMIX_APIS)
+        arguments: dict[str, Any] = dict(kwargs)
+        if model is not None:
+            arguments["model"] = model
+        result = module.remix(prompt, reference_images, **arguments)
+        return _attach_image_warning_error(result, api, "remix", model)
+    except Exception as exc:
+        return _image_failure(exc, api=api, operation="remix", model=model)
 
 
 def analyze(prompt, image, model=None, *, api, **kwargs):
     """Run vision/multimodal analysis with the selected provider."""
 
-    module = _load_module("analyze", api, _ANALYZE_APIS)
-    if model is None:
-        return module.analyze(prompt, image, **kwargs)
-    return module.analyze(prompt, image, model=model, **kwargs)
+    try:
+        module = _load_module("analyze", api, _ANALYZE_APIS)
+        if model is None:
+            result = module.analyze(prompt, image, **kwargs)
+        else:
+            result = module.analyze(prompt, image, model=model, **kwargs)
+        return _attach_analyze_output_error(result, api, "analyze", model)
+    except Exception as exc:
+        message = error_message(exc)
+        return attach_error(
+            {
+                "request_id": "",
+                "cost_usd": 0.0,
+                "input_text": prompt.strip() if isinstance(prompt, str) else "",
+                "output": message,
+                "warnings": message,
+            },
+            exc,
+            provider=api,
+            operation="analyze",
+            model=model,
+        )
+
+
+def _image_failure(exc, *, api, operation, model):
+    message = error_message(exc)
+    return attach_error(
+        {
+            "cust_usd": 0.0,
+            "base64": "",
+            "warnings": message,
+            "request_id": "",
+        },
+        exc,
+        provider=api,
+        operation=operation,
+        model=model,
+    )
+
+
+def _attach_image_warning_error(result, api, operation, model):
+    if not isinstance(result, dict):
+        return result
+    if result.get("error"):
+        return result
+    warning = str(result.get("warnings") or "").strip()
+    if warning and not result.get("base64"):
+        return attach_error(
+            result,
+            RuntimeError(warning),
+            provider=api,
+            operation=operation,
+            model=model,
+        )
+    return result
+
+
+def _attach_analyze_output_error(result, api, operation, model):
+    if not isinstance(result, dict) or result.get("error"):
+        return result
+    output = str(result.get("output") or "").strip()
+    if output.startswith("Provider error:"):
+        result = dict(result)
+        result["warnings"] = output
+        return attach_error(
+            result,
+            RuntimeError(output),
+            provider=api,
+            operation=operation,
+            model=model,
+        )
+    return result
 
 
 def update_cost(operation, result, *, api):
