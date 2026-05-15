@@ -89,7 +89,7 @@ def transcribe(
 
     form_fields = [
         ("model_id", model),
-        ("file_format", "pcm_s16le_16"),
+        ("file_format", _elevenlabs_file_format(request_audio)),
         ("timestamps_granularity", timestamps_granularity),
         ("diarize", "true" if diarize else "false"),
         ("tag_audio_events", "true" if tag_audio_events else "false"),
@@ -192,6 +192,23 @@ def transcribe(
         if documented_model
         else f"No documented pricing metadata is available for ElevenLabs model `{model}`.",
     )
+
+
+def _elevenlabs_file_format(request_audio):
+    """Returns the ElevenLabs file_format value that matches the prepared payload."""
+    upload_format = str(request_audio.get("upload_format") or "").strip().lower()
+    if not upload_format:
+        file_name = str(request_audio.get("file_name") or "").strip().lower()
+        if "." in file_name:
+            upload_format = file_name.rsplit(".", 1)[-1]
+    if not upload_format:
+        content_type = str(request_audio.get("content_type") or "").strip().lower()
+        if content_type in {"audio/wav", "audio/wave", "audio/x-wav"}:
+            upload_format = "wav"
+
+    if request_audio.get("normalized", True) and upload_format in {"wav", "wave"}:
+        return "pcm_s16le_16"
+    return "other"
 
 
 def _compute_elevenlabs_cost(duration_seconds, *, model, entity_detection=None, keyterms=None):

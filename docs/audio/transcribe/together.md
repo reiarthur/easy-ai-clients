@@ -1,6 +1,6 @@
 # Together AI Speech Transcription
 
-Snapshot date: 2026-05-11.
+Snapshot date: 2026-05-15.
 
 ## Overview
 
@@ -20,6 +20,7 @@ The adapter exposes `transcribe(audio_input, model="openai/whisper-large-v3", **
 - Supported models: `openai/whisper-large-v3`, `nvidia/parakeet-tdt-0.6b-v3`
 - Language behavior with no concrete language: the adapter sends `language="auto"`.
 - Default request shape: `verbose_json`, word and segment timestamps. Diarization defaults to the model capability.
+- Library audio preparation default: normalized WAV. Prepared payloads can use other supported upload formats when you opt in.
 
 Removed from the public surface: `deepgram/flux`, `deepgram/nova-3-en`, and `deepgram/nova-3-multi`, because the serverless endpoint returned `model_not_available` and required dedicated endpoints.
 
@@ -57,6 +58,21 @@ Together transcription responses do not return final cost. The adapter first tri
 - Catalog failure: fallback to the documented per-minute table with `cost_source="official_pricing_table"` and `cost_lookup_error` explaining the lookup issue.
 
 Both paths are deterministic estimates, so `cost_is_estimated=True`.
+
+## Prepared Audio and Upload Formats
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio("audio.mp3")
+bundle = transcribe(prepared, api="together", model="openai/whisper-large-v3")
+```
+
+Together documents uploads or public URLs for `.wav`, `.mp3`, `.m4a`, `.webm`,
+`.flac`, `.ogg`, `.opus`, and `.aac`. The library default remains normalized
+WAV, while `prepare_transcription_audio(..., upload_format="mp3" | "flac" |
+"ogg")` lets callers validate compressed payloads per model. The
+`language="auto"` default and Parakeet diarization behavior are unchanged.
 
 ## Examples
 

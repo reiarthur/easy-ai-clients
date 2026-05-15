@@ -18,6 +18,7 @@ from ..post_processing import (
     build_raw_transcription_payload,
 )
 from ..pre_processing import (
+    PreparedTranscriptionAudio,
     _clean_text,
     _safe_float,
     build_balanced_spans,
@@ -139,6 +140,7 @@ def transcribe(
     if detect_entities is None:
         should_detect_entities = resolved_language.lower().startswith("en") and not _is_whisper_model(primary_model)
 
+    prepared_audio = audio_input if isinstance(audio_input, PreparedTranscriptionAudio) else None
     audio = load_audio(audio_input)
     spans = build_balanced_spans(audio)
     audio_duration_seconds = len(audio) / 1000.0
@@ -160,6 +162,7 @@ def transcribe(
             measurements=measurements,
             detect_entities=should_detect_entities,
             extra_request_params=provider_params,
+            request_audio=prepared_audio,
         )
         request_ids.extend(primary_request_ids)
 
@@ -179,6 +182,7 @@ def transcribe(
                 measurements=measurements,
                 detect_entities=should_detect_entities,
                 extra_request_params=provider_params,
+                request_audio=prepared_audio,
             )
             request_ids.extend(fallback_request_ids)
             if fallback_error is not None:
@@ -461,6 +465,18 @@ def _transcribe_chunk(audio, span, request_params, api_key):
         return _post_audio(session, audio_bytes, content_type, request_params, api_key)
 
 
+def _can_upload_prepared_payload(request_audio, audio, spans):
+    """Returns whether Deepgram can receive the prepared object as a single upload."""
+    if not isinstance(request_audio, PreparedTranscriptionAudio):
+        return False
+    if not request_audio.audio_bytes or not request_audio.content_type:
+        return False
+    if len(spans) != 1:
+        return False
+    chunk_start, chunk_end = spans[0]
+    return int(chunk_start or 0) <= 0 and int(chunk_end or 0) >= len(audio)
+
+
 def _normalize_request_params(
     model_name,
     *,
@@ -510,8 +526,29 @@ def _should_retry_without_language(error):
     )
 
 
-def _execute_model_transcription(audio, spans, request_params, api_key, actual_concurrency):
+def _execute_model_transcription(
+    audio,
+    spans,
+    request_params,
+    api_key,
+    actual_concurrency,
+    *,
+    request_audio=None,
+):
     """Runs one Deepgram request-parameter variant across all chunks."""
+    if _can_upload_prepared_payload(request_audio, audio, spans):
+        with requests.Session() as session:
+            result_payload = _post_audio(
+                session,
+                request_audio.audio_bytes,
+                request_audio.content_type,
+                request_params,
+                api_key,
+            )
+        request_id = _clean_text((result_payload.get("metadata") or {}).get("request_id"))
+        request_ids = [request_id] if request_id else []
+        return _merge_chunk_results([(0, result_payload)]), request_ids
+
     results_by_index = [None] * len(spans)
     request_ids = []
 
@@ -576,6 +613,7 @@ def _transcribe_with_model(
     measurements=True,
     detect_entities=False,
     extra_request_params=None,
+    request_audio=None,
 ):
     """Transcribes all spans with one model."""
     if not spans:
@@ -619,6 +657,7 @@ def _transcribe_with_model(
                 request_params,
                 api_key,
                 actual_concurrency,
+                request_audio=request_audio,
             )
             request_ids.extend(variant_request_ids)
             return merged_result, request_ids, None

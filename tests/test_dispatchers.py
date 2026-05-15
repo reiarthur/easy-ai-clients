@@ -184,15 +184,17 @@ def test_audio_transcribe_routes_to_provider(monkeypatch):
     from easy_ai_clients.audio._transcribe._apis import deepgram as provider
 
     captured = {}
+    prepared = object()
 
     def fake_transcribe(audio_input, model="nova-2", **kwargs):
         captured.update(audio_input=audio_input, model=model, kwargs=kwargs)
         return {"text": "ok"}
 
+    monkeypatch.setattr(audio, "prepare_transcription_audio", lambda audio_input, **kwargs: prepared)
     monkeypatch.setattr(provider, "transcribe", fake_transcribe)
     audio.transcribe("audio.mp3", model="nova-2", api="deepgram", language="en")
 
-    assert captured["audio_input"] == "audio.mp3"
+    assert captured["audio_input"] is prepared
     assert captured["model"] == "nova-2"
     assert captured["kwargs"] == {"language": "en"}
 

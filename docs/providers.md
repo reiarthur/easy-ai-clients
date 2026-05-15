@@ -52,6 +52,10 @@ For copyable dispatcher examples and normalized response structures, see
 
 ### `audio.transcribe(...)` (speech-to-text)
 
+`easy_ai_clients.audio.prepare_transcription_audio(...)` prepares a reusable
+normalized WAV payload by default and can opt into compressed upload formats
+such as MP3, FLAC, or Ogg/Opus where the selected provider supports them.
+
 | API | Env var | Notes |
 | --- | --- | --- |
 | [`deepgram`](audio/transcribe/deepgram.md) | `DEEPGRAM_API_KEY` (+ optional `DEEPGRAM_PROJECT_ID`) | Kept Nova, Enhanced, Base specialty, and Whisper models; supports `audio.update_cost`. |

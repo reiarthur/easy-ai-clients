@@ -1,6 +1,6 @@
 # Fireworks AI Speech Transcription
 
-Snapshot date: 2026-05-11.
+Snapshot date: 2026-05-15.
 
 ## Overview
 
@@ -20,6 +20,7 @@ The adapter exposes `transcribe(audio_input, model="whisper-v3-turbo", **kwargs)
 - Supported models: `whisper-v3`, `whisper-v3-turbo`
 - Language behavior with no concrete language: `language` is omitted and Fireworks detects the language.
 - Default request shape: `verbose_json`, word and segment timestamps, diarization enabled.
+- Library audio preparation default: normalized WAV. This is separate from Fireworks' provider-native `preprocessing` parameter.
 
 ## Accepted Kwargs
 
@@ -55,6 +56,26 @@ Default model. Official model page lists US$0.0009 per audio minute, billed per 
 The transcription response does not return final cost or usage. The adapter calculates from the official per-minute model prices and returns `cost_source="official_pricing_table"` and `cost_is_estimated=True`.
 
 No undocumented diarization multiplier is applied.
+
+## Prepared Audio and Upload Formats
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio("audio.mp3")
+bundle = transcribe(
+    prepared,
+    api="fireworks",
+    model="whisper-v3-turbo",
+    preprocessing="none",
+)
+```
+
+Fireworks documents common formats such as MP3, FLAC, and WAV, and states that
+it resamples/downmixes/reformats audio internally to 16 kHz mono PCM16. The
+library's `prepare_transcription_audio(...)` controls local decode/export; the
+provider-native `preprocessing` kwarg controls Fireworks' own preprocessing
+mode and is forwarded unchanged.
 
 ## Examples
 

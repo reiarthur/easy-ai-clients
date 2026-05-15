@@ -14,9 +14,12 @@ import importlib
 from typing import Any
 
 from .._error_utils import attach_error, error_message
+from ._transcribe.pre_processing import PreparedTranscriptionAudio, prepare_transcription_audio
 
 __all__ = [
+    "PreparedTranscriptionAudio",
     "generate",
+    "prepare_transcription_audio",
     "transcribe",
     "update_cost",
     "available_synthesize_apis",
@@ -42,6 +45,8 @@ _TRANSCRIBE_APIS = (
     "speechmatics",
     "together",
 )
+
+_AUDIO_OPTION_UNSET = object()
 
 
 def available_synthesize_apis():
@@ -125,7 +130,17 @@ def generate(text, model=None, voice=None, language_code="en", *, api, **kwargs)
         )
 
 
-def transcribe(audio_input, model=None, *, api, **kwargs):
+def transcribe(
+    audio_input,
+    model=None,
+    *,
+    api,
+    audio_normalize: bool | object = _AUDIO_OPTION_UNSET,
+    audio_upload_format: str | object = _AUDIO_OPTION_UNSET,
+    audio_upload_codec: str | None | object = _AUDIO_OPTION_UNSET,
+    audio_upload_bitrate: str | None | object = _AUDIO_OPTION_UNSET,
+    **kwargs,
+):
     """Transcribe audio with the selected provider.
 
     ### Parameters:
@@ -133,6 +148,10 @@ def transcribe(audio_input, model=None, *, api, **kwargs):
     - model (str | None): Provider-specific model identifier. When omitted, the
       provider default is used.
     - api (str): Provider identifier listed by :func:`available_transcribe_apis`.
+    - audio_normalize (bool): Normalize local audio to 16 kHz mono PCM16 before upload.
+    - audio_upload_format (str): Upload/export format for prepared audio. Defaults to WAV.
+    - audio_upload_codec (str | None): Optional export codec, for example `libopus`.
+    - audio_upload_bitrate (str | None): Optional export bitrate, for example `24k`.
     - **kwargs: Extra provider-native parameters.
 
     ### Returns:
@@ -142,9 +161,36 @@ def transcribe(audio_input, model=None, *, api, **kwargs):
 
     try:
         module = _load_transcribe(api)
+        audio_options_requested = any(
+            value is not _AUDIO_OPTION_UNSET
+            for value in (
+                audio_normalize,
+                audio_upload_format,
+                audio_upload_codec,
+                audio_upload_bitrate,
+            )
+        )
+        if isinstance(audio_input, PreparedTranscriptionAudio) and not audio_options_requested:
+            request_audio_input = audio_input
+        else:
+            request_audio_input = prepare_transcription_audio(
+                audio_input,
+                normalize=True
+                if audio_normalize is _AUDIO_OPTION_UNSET
+                else bool(audio_normalize),
+                upload_format="wav"
+                if audio_upload_format is _AUDIO_OPTION_UNSET
+                else str(audio_upload_format),
+                codec=None
+                if audio_upload_codec is _AUDIO_OPTION_UNSET
+                else audio_upload_codec,
+                bitrate=None
+                if audio_upload_bitrate is _AUDIO_OPTION_UNSET
+                else audio_upload_bitrate,
+            )
         if model is None:
-            return module.transcribe(audio_input, **kwargs)
-        return module.transcribe(audio_input, model=model, **kwargs)
+            return module.transcribe(request_audio_input, **kwargs)
+        return module.transcribe(request_audio_input, model=model, **kwargs)
     except Exception as exc:
         message = error_message(exc)
         return attach_error(

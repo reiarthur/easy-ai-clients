@@ -5,6 +5,26 @@ The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 0.8.0 - 2026-05-15
+
+### Added
+
+- Added `PreparedTranscriptionAudio` and
+  `audio.prepare_transcription_audio(...)` for reusable transcription upload
+  payloads.
+- Added dispatcher-level transcription audio options for local normalization,
+  upload format, codec, and bitrate without forwarding those options as
+  provider-native kwargs.
+
+### Changed
+
+- Transcription dispatch now prepares audio once and passes reusable payloads
+  to provider adapters while preserving normalized WAV as the default.
+- Provider adapters now accept prepared transcription payloads without repeated
+  local decode/export where the provider path can reuse them.
+- ElevenLabs transcription now sends `file_format="other"` for encoded prepared
+  uploads instead of marking them as `pcm_s16le_16`.
+
 ## 0.7.0 - 2026-05-14
 
 ### Added

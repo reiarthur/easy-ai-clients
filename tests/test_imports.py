@@ -30,8 +30,10 @@ def test_audio_dispatchers_callable():
     from easy_ai_clients import audio
 
     assert callable(audio.generate)
+    assert callable(audio.prepare_transcription_audio)
     assert callable(audio.transcribe)
     assert callable(audio.update_cost)
+    assert audio.PreparedTranscriptionAudio is not None
     assert isinstance(audio.available_synthesize_apis(), tuple)
     assert isinstance(audio.available_transcribe_apis(), tuple)
 

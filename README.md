@@ -88,6 +88,7 @@ or from each submodule:
 ```python
 from easy_ai_clients.text import generate as text_generate
 from easy_ai_clients.audio import generate as speech_generate
+from easy_ai_clients.audio import prepare_transcription_audio
 from easy_ai_clients.audio import transcribe
 from easy_ai_clients.image import analyze
 ```
@@ -100,6 +101,7 @@ Supported operations:
 | `text` | `list_models` | Provider model catalog helper where implemented | `falai`, `openai`, `openrouter` |
 | `text` | `update_cost` | Post-hoc cost refresh where implemented | `openai`, `openrouter` |
 | `audio` | `generate` | Text-to-speech synthesis | `deepinfra`, `elevenlabs`, `google`, `mistral`, `openai`, `together`, `xai` |
+| `audio` | `prepare_transcription_audio` | Reusable speech-to-text upload preparation | common transcription preprocessing |
 | `audio` | `transcribe` | Speech-to-text transcription | `deepgram`, `elevenlabs`, `falai`, `fireworks`, `speechmatics`, `together` |
 | `audio` | `update_cost` | Post-hoc transcription cost refresh where implemented | `deepgram` |
 | `image` | `generate` | Text-to-image generation | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
@@ -229,6 +231,36 @@ bundle = audio.update_cost("transcribe", bundle, api="deepgram")
 Transcription inputs may be local paths, supported URLs, bytes, base64 strings,
 data URLs, or `pydub.AudioSegment` objects when the selected provider adapter
 supports that input form.
+
+Transcription prepares normalized WAV by default for safety and backwards
+compatibility. To avoid repeated local decode/export while trying multiple
+providers or models, prepare once:
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio("audio.mp3")
+
+fireworks = transcribe(prepared, api="fireworks", model="whisper-v3-turbo", preprocessing="none")
+deepgram = transcribe(prepared, api="deepgram", model="nova-3")
+elevenlabs = transcribe(prepared, api="elevenlabs", model="scribe_v2", tag_audio_events=False)
+```
+
+Compressed upload formats are opt-in:
+
+```python
+prepared = prepare_transcription_audio(
+    "audio.mp3",
+    upload_format="ogg",
+    codec="libopus",
+    bitrate="24k",
+)
+result = transcribe(prepared, api="deepgram", model="nova-3")
+```
+
+Compressed uploads can reduce payload size, but provider decoding and runtime
+can differ. Validate the format for the selected provider/model. Automatic
+language defaults remain unchanged.
 
 ### Images
 

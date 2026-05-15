@@ -20,6 +20,51 @@ class FakeResponse:
         return self._payload
 
 
+def _write_audio_fixture(tmp_path):
+    from easy_ai_clients.audio._transcribe import pre_processing
+
+    if pre_processing.AudioSegment is None:
+        pytest.skip("pydub is required for transcription audio preparation tests")
+
+    fixture = tmp_path / "audio.wav"
+    segment = (
+        pre_processing.AudioSegment.silent(duration=1000, frame_rate=44100)
+        .set_channels(2)
+        .set_sample_width(2)
+    )
+    segment.export(fixture, format="wav")
+    return fixture
+
+
+def _prepared_stub(
+    *,
+    audio=None,
+    audio_bytes=b"prepared-audio",
+    content_type="audio/wav",
+    file_name="audio.wav",
+    duration=1.0,
+    upload_format="wav",
+    normalized=True,
+    source_format="wav",
+    codec=None,
+    bitrate=None,
+):
+    from easy_ai_clients.audio import PreparedTranscriptionAudio
+
+    return PreparedTranscriptionAudio(
+        audio=audio,
+        audio_bytes=audio_bytes,
+        content_type=content_type,
+        file_name=file_name,
+        audio_duration_seconds=duration,
+        upload_format=upload_format,
+        normalized=normalized,
+        source_format=source_format,
+        codec=codec,
+        bitrate=bitrate,
+    )
+
+
 def _load_multilingual_benchmark_module():
     path = Path(__file__).resolve().parent / "test_live_transcribe_multilingual_matrix.py"
     spec = importlib.util.spec_from_file_location("live_transcribe_multilingual_matrix", path)
@@ -28,6 +73,318 @@ def _load_multilingual_benchmark_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def test_prepare_transcription_audio_default_uses_normalized_wav(tmp_path):
+    from easy_ai_clients.audio import PreparedTranscriptionAudio, prepare_transcription_audio
+
+    prepared = prepare_transcription_audio(str(_write_audio_fixture(tmp_path)))
+
+    assert isinstance(prepared, PreparedTranscriptionAudio)
+    assert prepared.audio is not None
+    assert prepared.audio.frame_rate == 16000
+    assert prepared.audio.channels == 1
+    assert prepared.audio.sample_width == 2
+    assert prepared.audio_bytes.startswith(b"RIFF")
+    assert prepared.content_type == "audio/wav"
+    assert prepared.file_name == "audio.wav"
+    assert prepared.audio_duration_seconds > 0
+    assert prepared.upload_format == "wav"
+    assert prepared.normalized is True
+    assert prepared.source_format == "wav"
+
+
+def test_build_request_audio_prepared_returns_bytes_without_reexport(monkeypatch):
+    from easy_ai_clients.audio._transcribe import pre_processing
+
+    prepared = _prepared_stub(
+        audio_bytes=b"already-exported",
+        content_type="audio/ogg",
+        file_name="audio.ogg",
+        upload_format="ogg",
+        source_format="mp3",
+        codec="libopus",
+        bitrate="24k",
+    )
+
+    def fail_export(*args, **kwargs):
+        raise AssertionError("prepared audio should not be exported again")
+
+    monkeypatch.setattr(pre_processing, "export_segment", fail_export)
+
+    request_audio = pre_processing.build_request_audio(prepared)
+
+    assert request_audio["audio_bytes"] == b"already-exported"
+    assert request_audio["content_type"] == "audio/ogg"
+    assert request_audio["file_name"] == "audio.ogg"
+    assert request_audio["upload_format"] == "ogg"
+    assert request_audio["codec"] == "libopus"
+    assert request_audio["bitrate"] == "24k"
+
+
+def test_load_audio_prepared_uses_embedded_segment():
+    from easy_ai_clients.audio._transcribe import pre_processing
+
+    if pre_processing.AudioSegment is None:
+        pytest.skip("pydub is required for prepared audio segment tests")
+
+    segment = (
+        pre_processing.AudioSegment.silent(duration=1000, frame_rate=16000)
+        .set_channels(1)
+        .set_sample_width(2)
+    )
+    prepared = _prepared_stub(audio=segment)
+
+    assert pre_processing.load_audio(prepared) is segment
+
+
+def test_prepare_transcription_audio_rejects_invalid_format_and_missing_file(tmp_path):
+    from easy_ai_clients.audio import prepare_transcription_audio
+
+    with pytest.raises(ValueError, match="Unsupported transcription upload_format"):
+        prepare_transcription_audio(str(_write_audio_fixture(tmp_path)), upload_format="zip")
+
+    with pytest.raises(FileNotFoundError):
+        prepare_transcription_audio("missing-audio-file.mp3")
+
+
+def test_prepare_transcription_audio_wraps_export_failures():
+    from easy_ai_clients.audio._transcribe import pre_processing
+
+    if pre_processing.AudioSegment is None:
+        pytest.skip("pydub is required for export failure tests")
+
+    segment = pre_processing.AudioSegment.silent(duration=250, frame_rate=16000)
+
+    with pytest.raises(ValueError, match="Could not export transcription audio"):
+        pre_processing.prepare_transcription_audio(
+            segment,
+            upload_format="ogg",
+            codec="not-a-real-codec",
+        )
+
+
+def test_audio_transcribe_prepared_reaches_provider_without_repreparing(monkeypatch):
+    from easy_ai_clients import audio
+    from easy_ai_clients.audio._transcribe._apis import deepgram as provider
+
+    prepared = _prepared_stub()
+    captured = {}
+
+    def fake_prepare(*args, **kwargs):
+        raise AssertionError("prepared audio should not be prepared again")
+
+    def fake_transcribe(audio_input, model="nova-2", **kwargs):
+        captured["audio_input"] = audio_input
+        captured["model"] = model
+        captured["kwargs"] = kwargs
+        return {"text": "ok"}
+
+    monkeypatch.setattr(audio, "prepare_transcription_audio", fake_prepare)
+    monkeypatch.setattr(provider, "transcribe", fake_transcribe)
+
+    result = audio.transcribe(prepared, api="deepgram", model="nova-3", language="pt")
+
+    assert result["text"] == "ok"
+    assert captured["audio_input"] is prepared
+    assert captured["model"] == "nova-3"
+    assert captured["kwargs"] == {"language": "pt"}
+
+
+def test_audio_transcribe_audio_options_are_dispatcher_only(monkeypatch):
+    from easy_ai_clients import audio
+    from easy_ai_clients.audio._transcribe._apis import fireworks as provider
+
+    prepared = _prepared_stub(
+        audio_bytes=b"opus",
+        content_type="audio/ogg",
+        file_name="audio.ogg",
+        upload_format="ogg",
+        source_format="mp3",
+        codec="libopus",
+        bitrate="24k",
+    )
+    captured = {}
+
+    def fake_prepare(audio_input, **kwargs):
+        captured["prepare_audio_input"] = audio_input
+        captured["prepare_kwargs"] = kwargs
+        return prepared
+
+    def fake_transcribe(audio_input, model="whisper-v3-turbo", **kwargs):
+        captured["provider_audio_input"] = audio_input
+        captured["provider_kwargs"] = kwargs
+        return {"text": "ok"}
+
+    monkeypatch.setattr(audio, "prepare_transcription_audio", fake_prepare)
+    monkeypatch.setattr(provider, "transcribe", fake_transcribe)
+
+    result = audio.transcribe(
+        "audio.mp3",
+        api="fireworks",
+        model="whisper-v3",
+        audio_upload_format="ogg",
+        audio_upload_codec="libopus",
+        audio_upload_bitrate="24k",
+        preprocessing="none",
+    )
+
+    assert result["text"] == "ok"
+    assert captured["prepare_audio_input"] == "audio.mp3"
+    assert captured["prepare_kwargs"] == {
+        "normalize": True,
+        "upload_format": "ogg",
+        "codec": "libopus",
+        "bitrate": "24k",
+    }
+    assert captured["provider_audio_input"] is prepared
+    assert captured["provider_kwargs"] == {"preprocessing": "none"}
+
+
+def test_deepgram_prepared_single_upload_uses_prepared_bytes(monkeypatch):
+    from easy_ai_clients.audio._transcribe import pre_processing
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    if pre_processing.AudioSegment is None:
+        pytest.skip("pydub is required for Deepgram prepared audio tests")
+
+    segment = (
+        pre_processing.AudioSegment.silent(duration=1000, frame_rate=16000)
+        .set_channels(1)
+        .set_sample_width(2)
+    )
+    prepared = _prepared_stub(
+        audio=segment,
+        audio_bytes=b"prepared-ogg",
+        content_type="audio/ogg",
+        file_name="audio.ogg",
+        upload_format="ogg",
+        source_format="mp3",
+        codec="libopus",
+        bitrate="24k",
+    )
+    captured = {}
+
+    def fake_post_audio(session, audio_bytes, content_type, request_params, api_key):
+        captured["audio_bytes"] = audio_bytes
+        captured["content_type"] = content_type
+        captured["request_params"] = request_params
+        return {
+            "metadata": {"duration": 1.0, "request_id": "dg-1"},
+            "results": {
+                "channels": [
+                    {
+                        "detected_language": "pt",
+                        "alternatives": [{"transcript": "ola", "words": []}],
+                    }
+                ],
+                "utterances": [],
+            },
+        }
+
+    monkeypatch.setattr(deepgram, "_get_api_key", lambda: "key")
+    monkeypatch.setattr(deepgram, "_lookup_total_exact_cost", lambda request_ids: (None, "no usage"))
+    monkeypatch.setattr(deepgram, "_post_audio", fake_post_audio)
+    monkeypatch.setattr(
+        deepgram,
+        "export_segment_as_wav",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("prepared single upload should not be exported as WAV")
+        ),
+    )
+
+    result = deepgram.transcribe(prepared, model="nova-3", language_mkd=False)
+
+    assert result["text"] == "ola"
+    assert captured["audio_bytes"] == b"prepared-ogg"
+    assert captured["content_type"] == "audio/ogg"
+    assert captured["request_params"]["model"] == "nova-3"
+
+
+def test_elevenlabs_uses_other_file_format_for_encoded_prepared_upload(monkeypatch):
+    from easy_ai_clients.audio._transcribe._apis import elevenlabs
+
+    captured = {}
+
+    monkeypatch.setattr(
+        elevenlabs,
+        "build_request_audio",
+        lambda audio_input: {
+            "file_name": "audio.mp3",
+            "audio_bytes": b"mp3",
+            "content_type": "audio/mpeg",
+            "audio_duration_seconds": 1.0,
+            "upload_format": "mp3",
+            "normalized": True,
+        },
+    )
+    monkeypatch.setattr(elevenlabs, "get_required_api_key", lambda env_var: "key")
+
+    def fake_request(*args, **kwargs):
+        captured["data"] = kwargs["data"]
+        captured["files"] = kwargs["files"]
+        return FakeResponse(
+            {
+                "text": "ola",
+                "words": [],
+                "audio_duration_secs": 1.0,
+                "language_code": "por",
+            }
+        )
+
+    monkeypatch.setattr(elevenlabs, "request_with_retries", fake_request)
+
+    result = elevenlabs.transcribe("audio.mp3", model="scribe_v2", language_mkd=False)
+
+    assert result["text"] == "ola"
+    assert ("file_format", "other") in captured["data"]
+    assert captured["files"]["file"] == ("audio.mp3", b"mp3", "audio/mpeg")
+
+
+def test_falai_data_url_uses_prepared_content_type(monkeypatch):
+    from easy_ai_clients.audio._transcribe._apis import falai
+
+    captured = {}
+
+    monkeypatch.setattr(
+        falai,
+        "build_request_audio",
+        lambda audio_input: {
+            "file_name": "audio.ogg",
+            "audio_bytes": b"ogg-bytes",
+            "content_type": "audio/ogg",
+            "audio_duration_seconds": 1.0,
+            "upload_format": "ogg",
+            "normalized": True,
+        },
+    )
+    monkeypatch.setattr(falai, "get_required_api_key", lambda env_var: "key")
+
+    def fake_request(method, url, **kwargs):
+        if method == "POST":
+            captured["json_body"] = kwargs["json_body"]
+            return FakeResponse(
+                {
+                    "status_url": "https://fal.example/status",
+                    "response_url": "https://fal.example/response",
+                    "request_id": "fal-1",
+                }
+            )
+        if url == "https://fal.example/status":
+            return FakeResponse({"status": "COMPLETED"})
+        if url == "https://fal.example/response":
+            return FakeResponse(
+                {"text": "ola", "words": [], "language_code": "por"},
+                headers={"X-Fal-Billable-Units": "1"},
+            )
+        return FakeResponse({"prices": [{"unit_price": 0.01, "unit": "minutes"}]})
+
+    monkeypatch.setattr(falai, "request_with_retries", fake_request)
+
+    result = falai.transcribe("audio.mp3", language_mkd=False)
+
+    assert result["text"] == "ola"
+    assert captured["json_body"]["audio_url"].startswith("data:audio/ogg;base64,")
 
 
 def test_multilingual_benchmark_doc_parser_reads_blocked_rows(tmp_path):

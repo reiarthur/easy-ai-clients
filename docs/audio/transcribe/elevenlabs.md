@@ -1,6 +1,6 @@
 # ElevenLabs Speech Transcription
 
-Snapshot date: 2026-05-11.
+Snapshot date: 2026-05-15.
 
 ## Overview
 
@@ -19,6 +19,7 @@ The adapter exposes `transcribe(audio_input, model="scribe_v2", **kwargs)`.
 - Supported models: `scribe_v1`, `scribe_v2`
 - Language behavior with no concrete language: `language_code` is omitted. ElevenLabs predicts the language and returns provider language metadata such as `por`.
 - Default request shape: normalized PCM upload, word timestamps, diarization enabled, audio event tagging enabled.
+- Library audio preparation default: normalized WAV. Prepared encoded uploads use ElevenLabs `file_format="other"` instead of the PCM fast-path marker.
 
 ## Accepted Kwargs
 
@@ -61,6 +62,20 @@ The `/v1/speech-to-text` response does not return per-call cost. The library com
 - `keyterms`: US$0.050/hour when requested.
 
 No guessed surcharge is applied for redaction, speaker roles, or diarization. Returned metadata uses `cost_source="official_pricing_table"` and `cost_is_estimated=True`.
+
+## Prepared Audio and Upload Formats
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio("audio.mp3")
+bundle = transcribe(prepared, api="elevenlabs", model="scribe_v2")
+```
+
+The ElevenLabs `file_format="pcm_s16le_16"` marker is only used for the default
+normalized WAV/PCM path. If you prepare MP3, Ogg, FLAC, or another encoded
+container, the adapter sends `file_format="other"` so the request matches the
+actual upload. `language_code` remains omitted unless you pass it explicitly.
 
 ## Examples
 

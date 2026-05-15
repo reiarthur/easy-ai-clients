@@ -15,6 +15,7 @@ Direct submodule imports are also supported:
 ```python
 from easy_ai_clients.text import generate as text_generate
 from easy_ai_clients.audio import generate as speech_generate
+from easy_ai_clients.audio import prepare_transcription_audio
 from easy_ai_clients.audio import transcribe
 from easy_ai_clients.image import analyze
 from easy_ai_clients.video import text_to_video
@@ -125,9 +126,62 @@ bundle = audio.transcribe(
 print(bundle["text"])
 ```
 
+The backwards-compatible dispatcher form remains:
+
+```python
+from easy_ai_clients.audio import transcribe
+
+result = transcribe("audio.mp3", api="deepgram")
+```
+
 Supported input forms depend on the selected adapter, but public preprocessing
 supports local paths, supported URLs, bytes, base64 strings, data URLs, and
 `pydub.AudioSegment` objects.
+
+By default, transcription prepares a normalized WAV payload: 16 kHz, mono,
+PCM16. This is the safest cross-provider behavior and preserves older calls.
+When comparing providers or models, prepare the audio once and reuse it:
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio("audio.mp3")
+
+fireworks = transcribe(
+    prepared,
+    api="fireworks",
+    model="whisper-v3-turbo",
+    preprocessing="none",
+)
+deepgram = transcribe(prepared, api="deepgram", model="nova-3")
+elevenlabs = transcribe(
+    prepared,
+    api="elevenlabs",
+    model="scribe_v2",
+    tag_audio_events=False,
+)
+```
+
+You can opt into compressed uploads when a provider supports the format:
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio(
+    "audio.mp3",
+    upload_format="ogg",
+    codec="libopus",
+    bitrate="24k",
+)
+result = transcribe(prepared, api="deepgram", model="nova-3")
+```
+
+Compressed formats can reduce upload size, but they may change provider-side
+decoding/runtime and should be validated for the selected provider/model.
+Prepared audio avoids repeated local decode/export; automatic language defaults
+are unchanged. Provider-native kwargs such as Fireworks `preprocessing="none"`
+remain separate from library audio preparation options such as
+`audio_upload_format=`.
 
 Common return keys include:
 

@@ -1,6 +1,6 @@
 # Fal.ai Speech Transcription
 
-Snapshot date: 2026-05-11.
+Snapshot date: 2026-05-15.
 
 ## Overview
 
@@ -19,6 +19,7 @@ The adapter exposes `transcribe(audio_input, model="fal-ai/elevenlabs/speech-to-
 - Supported models: `fal-ai/elevenlabs/speech-to-text`, `fal-ai/elevenlabs/speech-to-text/scribe-v2`
 - Language behavior with no concrete language: `language_code` is omitted and the upstream Scribe endpoint detects the language.
 - Default request shape: normalized audio data URL submitted to the Fal.ai queue with diarization and audio event tagging enabled.
+- Library audio preparation default: normalized WAV data URL. Prepared audio bytes are reused directly in the data URL with the prepared content type.
 
 ## Accepted Kwargs
 
@@ -53,6 +54,21 @@ Fal.ai transcription payloads do not include final per-call cost. The adapter qu
 - If the pricing lookup fails, `cost_usd=0.0`, `cost_source="unavailable"`, and `cost_lookup_error` explains the failure.
 
 Pricing API calculations are deterministic estimates, so `cost_is_estimated=True`.
+
+## Prepared Audio and Upload Formats
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio("audio.mp3")
+bundle = transcribe(prepared, api="falai")
+```
+
+Fal.ai model inputs use `audio_url`. The adapter converts prepared bytes to a
+Base64 data URI and preserves `PreparedTranscriptionAudio.content_type` in that
+URI. Fal.ai also accepts hosted/uploaded file URLs in its native workflow, but
+this adapter keeps the public dispatcher behavior local and reusable by sending
+the prepared data URI. `language_code` remains omitted unless explicitly set.
 
 ## Examples
 

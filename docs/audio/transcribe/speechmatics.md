@@ -1,6 +1,6 @@
 # Speechmatics Speech Transcription
 
-Snapshot date: 2026-05-11.
+Snapshot date: 2026-05-15.
 
 ## Overview
 
@@ -12,6 +12,7 @@ The adapter exposes `transcribe(audio_input, model="standard", **kwargs)`.
 - API key: `SPEECHMATICS_API_KEY`
 - Documentation: https://docs.speechmatics.com/
 - Batch job API: https://docs.speechmatics.com/api-ref/asr/transcription-jobs/create
+- Batch input formats: https://docs.speechmatics.com/speech-to-text/batch/input
 - Python SDK examples: https://docs.speechmatics.com/sdk/python-sdk
 - Pricing: https://www.speechmatics.com/pricing
 - Pricing CSV referenced by pricing page: https://assets.ctfassets.net/yze1aysi0225/16iPaLPpkieCFFWh54jfrA/df1761507f16eeb934a14dbc0d315de3/Pricing_April_2025-updated-December.csv
@@ -22,6 +23,7 @@ The adapter exposes `transcribe(audio_input, model="standard", **kwargs)`.
 - Supported models: `standard`, `enhanced`
 - Language behavior with no concrete language: the adapter sends `language="auto"`, the official batch language identification mode.
 - Default request shape: batch transcription job with speaker diarization enabled and no enrichment add-ons unless requested.
+- Library audio preparation default: normalized WAV. This remains the safe default because Speechmatics documents 16-bit 16 kHz mono WAV as the optimal speed format.
 
 ## Accepted Kwargs
 
@@ -75,6 +77,21 @@ Add-on prices applied when corresponding configs are supplied:
 - Topics: US$0.20/hour.
 
 No undocumented add-ons are charged.
+
+## Prepared Audio and Upload Formats
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio("audio.mp3")
+bundle = transcribe(prepared, api="speechmatics", model="enhanced")
+```
+
+Prepared audio is accepted by the adapter and sent as the uploaded `data_file`.
+The global default stays normalized WAV. Speechmatics documents additional batch
+file types such as MP3, AAC, Ogg, M4A, MP4, and FLAC, but this release does not
+change the adapter default away from WAV. `language="auto"` and
+`language_identification_config` behavior are unchanged.
 
 ## Examples
 

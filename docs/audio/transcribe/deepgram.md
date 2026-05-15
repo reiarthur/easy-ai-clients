@@ -1,6 +1,6 @@
 # Deepgram Speech Transcription
 
-Snapshot date: 2026-05-11.
+Snapshot date: 2026-05-15.
 
 ## Overview
 
@@ -13,6 +13,8 @@ The adapter exposes `transcribe(audio_input, model="nova-2", **kwargs)`.
 - Optional cost lookup project: `DEEPGRAM_PROJECT_ID`
 - Listen API: https://developers.deepgram.com/reference/speech-to-text-api/listen
 - Models and languages: https://developers.deepgram.com/docs/models-languages-overview/
+- Supported audio formats: https://developers.deepgram.com/docs/supported-audio-formats
+- Encoding: https://developers.deepgram.com/docs/encoding
 - Usage lookup: https://developers.deepgram.com/docs/using-logs-usage
 - Pricing: https://deepgram.com/pricing
 
@@ -22,6 +24,7 @@ The adapter exposes `transcribe(audio_input, model="nova-2", **kwargs)`.
 - Language behavior with no concrete language: the adapter omits `language` and sends `detect_language=true`.
 - Default request shape: `smart_format=true`, `utterances=true`, `diarize=true`, `punctuate=true`, plus normalized WAV chunks.
 - Fallback behavior: no fallback model is used by default. Pass `fallback_model="..."` explicitly if you want a second model attempted after the requested model fails. Result metadata records `requested_model`, `actual_model`, and `fallback_model`.
+- Library audio preparation default: normalized WAV. Prepared audio is reused without a second local decode; if the audio is split into chunks, chunks are still uploaded as WAV.
 
 ## Supported Models
 
@@ -77,6 +80,32 @@ Returned cost fields:
 - Lookup failure for older families or undocumented models: `cost_usd=0.0`, `cost_source="unavailable"`, and `cost_lookup_error` explains why.
 
 The lookup needs an API key with `usage:read`. Set `DEEPGRAM_PROJECT_ID` to avoid project discovery, or let the adapter list projects when the key has access.
+
+## Prepared Audio and Upload Formats
+
+```python
+from easy_ai_clients.audio import prepare_transcription_audio, transcribe
+
+prepared = prepare_transcription_audio("audio.mp3")
+bundle = transcribe(prepared, api="deepgram", model="nova-3")
+```
+
+Deepgram supports many containerized formats, including MP3, WAV, FLAC, Ogg,
+Opus, and WebM. You can opt into a compressed prepared payload:
+
+```python
+prepared = prepare_transcription_audio(
+    "audio.mp3",
+    upload_format="ogg",
+    codec="libopus",
+    bitrate="24k",
+)
+bundle = transcribe(prepared, api="deepgram", model="nova-3")
+```
+
+Deepgram's `encoding` and `sample_rate` parameters are for raw/headerless audio.
+Do not add them for containerized uploads such as WAV, Ogg, or WebM unless you
+are deliberately sending a raw audio path.
 
 ## Examples
 
