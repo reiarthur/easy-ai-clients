@@ -232,6 +232,11 @@ Transcription inputs may be local paths, supported URLs, bytes, base64 strings,
 data URLs, or `pydub.AudioSegment` objects when the selected provider adapter
 supports that input form.
 
+Deepgram transcription sends one provider request per `audio.transcribe(...)`
+call, reusing prepared bytes directly when provided. The library does not
+split or chunk Deepgram audio before upload; segment long media before calling
+the library when your workflow needs multiple requests.
+
 Transcription prepares normalized WAV by default for safety and backwards
 compatibility. To avoid repeated local decode/export while trying multiple
 providers or models, prepare once:
@@ -404,6 +409,9 @@ Cost values are best-effort normalized USD values:
 - Some providers return exact usage or request cost.
 - Some adapters compute cost from usage fields and local pricing tables.
 - Some router/provider costs can be refined after the call.
+- Deepgram transcription first tries exact Management/Usage lookup by request
+  ID, then estimates Nova-3 models from official pricing when lookup is
+  unavailable.
 - Video adapters currently report estimated cost from documented provider
   pricing tables when metadata exists.
 - fal.ai video adapters can use the official pricing estimate API when callers

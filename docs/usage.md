@@ -140,6 +140,10 @@ supports local paths, supported URLs, bytes, base64 strings, data URLs, and
 
 By default, transcription prepares a normalized WAV payload: 16 kHz, mono,
 PCM16. This is the safest cross-provider behavior and preserves older calls.
+For Deepgram, the prepared payload is sent as one provider request per
+`transcribe(...)` call; the adapter does not split or chunk audio before upload.
+Segment long media before calling the library if you want multiple Deepgram
+requests.
 When comparing providers or models, prepare the audio once and reuse it:
 
 ```python

@@ -1,6 +1,6 @@
 # Deepgram Speech Transcription
 
-Snapshot date: 2026-05-15.
+Snapshot date: 2026-05-16.
 
 ## Overview
 
@@ -22,9 +22,11 @@ The adapter exposes `transcribe(audio_input, model="nova-2", **kwargs)`.
 
 - Default model: `nova-2`
 - Language behavior with no concrete language: the adapter omits `language` and sends `detect_language=true`.
-- Default request shape: `smart_format=true`, `utterances=true`, `diarize=true`, `punctuate=true`, plus normalized WAV chunks.
-- Fallback behavior: no fallback model is used by default. Pass `fallback_model="..."` explicitly if you want a second model attempted after the requested model fails. Result metadata records `requested_model`, `actual_model`, and `fallback_model`.
-- Library audio preparation default: normalized WAV. Prepared audio is reused without a second local decode; if the audio is split into chunks, chunks are still uploaded as WAV.
+- Default request shape: `smart_format=true`, `utterances=true`, `diarize=true`, `punctuate=true`, plus one prepared audio upload.
+- Upload behavior: one Deepgram Listen request is sent per `audio.transcribe(..., api="deepgram")` call. If an explicit `fallback_model` is attempted, the whole input is tried once with the primary model and once with the fallback model.
+- Fallback behavior: no fallback model is used by default. Pass `fallback_model="..."` explicitly if you want a second whole-input model attempt after the requested model fails. Result metadata records `requested_model`, `actual_model`, and `fallback_model`.
+- Library audio preparation default: normalized WAV. Prepared audio is reused without a second local decode or export when its bytes/content type/duration are already available.
+- Internal segmentation: the Deepgram adapter does not split, chunk, or segment audio before upload. Segment long media before calling the library if your application needs multiple provider requests.
 
 ## Supported Models
 
@@ -39,14 +41,13 @@ Removed from the public surface: `base`, `base-general`, `whisper-tiny`, and `wh
 | `language` | `language` | string | omitted | Deepgram language code | If omitted, `detect_language=true` is sent. | No |
 | `detect_language` | `detect_language` | bool | `true` when `language` omitted | bool | May be overridden through kwargs. | No |
 | `fallback_model` | n/a | string | `None` | supported Deepgram model | Explicit fallback only; no hidden fallback is used. | Yes, if used |
-| `concurrency` | n/a | int | Nova cap | positive int | Capped by model family and chunk count. | No |
 | `paragraphs` | `paragraphs` | bool | `True` | bool | Enables paragraph metadata. | No |
 | `filler_words` | `filler_words` | bool | `True` | bool | Preserves filler words. | No |
 | `numerals` | `numerals` | bool | `True` | bool | Formats numerals. | No |
 | `measurements` | `measurements` | bool | `True` | bool | Formats measurements. | No |
 | `detect_entities` | `detect_entities` | bool or `None` | English non-Whisper only | bool | Rejected for Whisper models. | No documented surcharge |
 | `smart_format` | `smart_format` | bool | `True` | bool | Forwarded to Listen query. | No |
-| `utterances` | `utterances` | bool | `True` | bool | Required for strong bundle segmentation. | No |
+| `utterances` | `utterances` | bool | `True` | bool | Required for strong normalized utterance/segment output. | No |
 | `diarize` | `diarize` | bool | `True` | bool | Speaker diarization. | Yes for Nova-3 table estimate |
 | `punctuate` | `punctuate` | bool | `True` | bool | Punctuation. | No |
 | `callback` | `callback` | string | omitted | URL | Forwarded. | No |
@@ -57,10 +58,10 @@ Removed from the public surface: `base`, `base-general`, `whisper-tiny`, and `wh
 | `tag` | `tag` | string/list | omitted | provider-native | Forwarded. | No |
 | `topics`, `custom_topic`, `custom_topic_mode` | same | bool/string/list | omitted | `custom_topic_mode`: `extended`, `strict` | Forwarded. | No documented surcharge |
 | `intents`, `custom_intent`, `custom_intent_mode` | same | bool/string/list | omitted | `custom_intent_mode`: `extended`, `strict` | Forwarded. | No documented surcharge |
-| `dictation`, `encoding`, `keyterm`, `keywords`, `multichannel`, `profanity_filter`, `redact`, `replace`, `search`, `version`, `mip_opt_out`, `utt_split` | same | provider-native | omitted | Deepgram Listen values | Forwarded after validation where applicable. | No documented surcharge |
+| `dictation`, `encoding`, `keyterm`, `keywords`, `multichannel`, `profanity_filter`, `redact`, `replace`, `search`, `version`, `mip_opt_out`, `utt_split` | same | provider-native | omitted | Deepgram Listen values | Forwarded. | No documented surcharge |
 | `language_mkd` | n/a | string or `False` | `"en"` | `en`, `zh`, `hi`, `es`, `fr`, `ar`, `bn`, `pt`, `ru`, `ur`, `False` | Markdown language for `mkd`. | No |
 
-Unknown kwargs raise `TypeError`.
+Unknown provider-native kwargs are forwarded to the Deepgram Listen query when they have non-empty values. The legacy `concurrency` kwarg is accepted for compatibility but has no effect because the adapter performs a single upload instead of parallel chunk uploads.
 
 ## Model Notes
 
@@ -71,7 +72,7 @@ Unknown kwargs raise `TypeError`.
 
 ## Cost Behavior
 
-Deepgram transcription responses do not include final cost. The adapter preserves request IDs and tries the Management/Usage request lookup.
+Deepgram transcription responses do not include final cost. The adapter preserves Deepgram request IDs and tries the Management/Usage request lookup.
 
 Returned cost fields:
 
@@ -106,6 +107,10 @@ bundle = transcribe(prepared, api="deepgram", model="nova-3")
 Deepgram's `encoding` and `sample_rate` parameters are for raw/headerless audio.
 Do not add them for containerized uploads such as WAV, Ogg, or WebM unless you
 are deliberately sending a raw audio path.
+
+If you need application-level segmentation for long recordings, create those
+segments before calling `audio.transcribe(...)`. Each call sends exactly the one
+input it receives to Deepgram.
 
 ## Examples
 

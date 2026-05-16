@@ -5,6 +5,21 @@ The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 0.8.1 - 2026-05-16
+
+### Changed
+
+- Changed Deepgram transcription to send one whole-input Listen request per
+  `audio.transcribe(..., api="deepgram")` call, with no internal audio
+  chunking or chunk-result merging.
+- Kept explicit Deepgram fallback behavior as one whole-input attempt for the
+  primary model and, when configured, one whole-input attempt for the fallback
+  model.
+- Reused `PreparedTranscriptionAudio` bytes, content type, file name, and
+  duration directly for Deepgram uploads when provided.
+- Documented that callers who need Deepgram segmentation for long media should
+  segment before calling the library.
+
 ## 0.8.0 - 2026-05-15
 
 ### Added

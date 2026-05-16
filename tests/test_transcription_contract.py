@@ -65,6 +65,59 @@ def _prepared_stub(
     )
 
 
+def _deepgram_payload(
+    *,
+    request_id="dg-1",
+    duration=1.25,
+    text="hello world",
+    language="en",
+    speaker=0,
+):
+    words = [
+        {
+            "word": "hello",
+            "punctuated_word": "hello",
+            "start": 0.0,
+            "end": 0.5,
+            "speaker": speaker,
+        },
+        {
+            "word": "world",
+            "punctuated_word": "world",
+            "start": 0.7,
+            "end": 1.2,
+            "speaker": speaker,
+        },
+    ]
+    return {
+        "metadata": {"duration": duration, "request_id": request_id},
+        "results": {
+            "channels": [
+                {
+                    "detected_language": language,
+                    "language_confidence": 0.99,
+                    "alternatives": [
+                        {
+                            "transcript": text,
+                            "words": words,
+                            "paragraphs": {"transcript": text},
+                        }
+                    ],
+                }
+            ],
+            "utterances": [
+                {
+                    "start": 0.0,
+                    "end": 1.2,
+                    "speaker": speaker,
+                    "transcript": text,
+                    "words": words,
+                }
+            ],
+        },
+    }
+
+
 def _load_multilingual_benchmark_module():
     path = Path(__file__).resolve().parent / "test_live_transcribe_multilingual_matrix.py"
     spec = importlib.util.spec_from_file_location("live_transcribe_multilingual_matrix", path)
@@ -242,19 +295,9 @@ def test_audio_transcribe_audio_options_are_dispatcher_only(monkeypatch):
 
 
 def test_deepgram_prepared_single_upload_uses_prepared_bytes(monkeypatch):
-    from easy_ai_clients.audio._transcribe import pre_processing
     from easy_ai_clients.audio._transcribe._apis import deepgram
 
-    if pre_processing.AudioSegment is None:
-        pytest.skip("pydub is required for Deepgram prepared audio tests")
-
-    segment = (
-        pre_processing.AudioSegment.silent(duration=1000, frame_rate=16000)
-        .set_channels(1)
-        .set_sample_width(2)
-    )
     prepared = _prepared_stub(
-        audio=segment,
         audio_bytes=b"prepared-ogg",
         content_type="audio/ogg",
         file_name="audio.ogg",
@@ -263,42 +306,177 @@ def test_deepgram_prepared_single_upload_uses_prepared_bytes(monkeypatch):
         codec="libopus",
         bitrate="24k",
     )
-    captured = {}
+    calls = []
 
     def fake_post_audio(session, audio_bytes, content_type, request_params, api_key):
-        captured["audio_bytes"] = audio_bytes
-        captured["content_type"] = content_type
-        captured["request_params"] = request_params
-        return {
-            "metadata": {"duration": 1.0, "request_id": "dg-1"},
-            "results": {
-                "channels": [
-                    {
-                        "detected_language": "pt",
-                        "alternatives": [{"transcript": "ola", "words": []}],
-                    }
-                ],
-                "utterances": [],
-            },
-        }
+        calls.append(
+            {
+                "audio_bytes": audio_bytes,
+                "content_type": content_type,
+                "request_params": request_params,
+                "api_key": api_key,
+            }
+        )
+        return _deepgram_payload(language="pt")
+
+    def fail_prepare(*args, **kwargs):
+        raise AssertionError("prepared audio should not be prepared again")
 
     monkeypatch.setattr(deepgram, "_get_api_key", lambda: "key")
     monkeypatch.setattr(deepgram, "_lookup_total_exact_cost", lambda request_ids: (None, "no usage"))
     monkeypatch.setattr(deepgram, "_post_audio", fake_post_audio)
-    monkeypatch.setattr(
-        deepgram,
-        "export_segment_as_wav",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("prepared single upload should not be exported as WAV")
-        ),
-    )
+    monkeypatch.setattr(deepgram, "prepare_transcription_audio", fail_prepare)
 
     result = deepgram.transcribe(prepared, model="nova-3", language_mkd=False)
 
-    assert result["text"] == "ola"
-    assert captured["audio_bytes"] == b"prepared-ogg"
-    assert captured["content_type"] == "audio/ogg"
-    assert captured["request_params"]["model"] == "nova-3"
+    assert len(calls) == 1
+    assert result["text"] == "hello world"
+    assert calls[0]["audio_bytes"] == b"prepared-ogg"
+    assert calls[0]["content_type"] == "audio/ogg"
+    assert calls[0]["request_params"]["model"] == "nova-3"
+    assert result["request_id"] == ["dg-1"]
+    assert result["words"]
+    assert result["segments"]
+    assert result["speaker_count"] == 1
+    assert result["cost_source"] == "official_pricing_table"
+
+
+def test_deepgram_dispatcher_sends_single_post_for_one_input(monkeypatch):
+    from easy_ai_clients import audio
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    prepared = _prepared_stub(audio_bytes=b"dispatcher-wav", duration=2.0)
+    calls = []
+
+    monkeypatch.setattr(audio, "prepare_transcription_audio", lambda audio_input, **kwargs: prepared)
+    monkeypatch.setattr(deepgram, "_get_api_key", lambda: "key")
+    monkeypatch.setattr(deepgram, "_lookup_total_exact_cost", lambda request_ids: (0.001234, None))
+
+    def fake_post_audio(session, audio_bytes, content_type, request_params, api_key):
+        calls.append(
+            {
+                "audio_bytes": audio_bytes,
+                "content_type": content_type,
+                "request_params": request_params,
+            }
+        )
+        return _deepgram_payload()
+
+    monkeypatch.setattr(deepgram, "_post_audio", fake_post_audio)
+
+    result = audio.transcribe(
+        "audio.mp3",
+        api="deepgram",
+        model="nova-3",
+        language="en",
+        smart_format=False,
+        tag=["unit"],
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["audio_bytes"] == b"dispatcher-wav"
+    assert calls[0]["request_params"]["model"] == "nova-3"
+    assert calls[0]["request_params"]["language"] == "en"
+    assert "detect_language" not in calls[0]["request_params"]
+    assert calls[0]["request_params"]["smart_format"] == "false"
+    assert calls[0]["request_params"]["tag"] == ["unit"]
+    assert result["provider"] == "deepgram"
+    assert result["model"] == "nova-3"
+    assert result["text"] == "hello world"
+    assert result["word_count"] == 2
+    assert result["character_count"] == 10
+    assert result["speaker_count"] == 1
+    assert result["request_id"] == ["dg-1"]
+    assert result["cost_usd"] == pytest.approx(0.001234)
+    assert result["cost_source"] == "usage_lookup"
+    assert result["cost_is_estimated"] is False
+    assert result["cost_lookup_error"] is None
+
+
+def test_deepgram_long_prepared_audio_still_sends_one_post(monkeypatch):
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    prepared = _prepared_stub(audio_bytes=b"long-audio", duration=7200.0)
+    calls = []
+
+    monkeypatch.setattr(deepgram, "_get_api_key", lambda: "key")
+    monkeypatch.setattr(deepgram, "_lookup_total_exact_cost", lambda request_ids: (None, "no usage"))
+
+    def fake_post_audio(session, audio_bytes, content_type, request_params, api_key):
+        calls.append(request_params)
+        return _deepgram_payload(duration=7200.0)
+
+    monkeypatch.setattr(deepgram, "_post_audio", fake_post_audio)
+
+    result = deepgram.transcribe(prepared, model="nova-3", language_mkd=False)
+
+    assert len(calls) == 1
+    assert calls[0]["detect_language"] == "true"
+    assert result["duration"] == 7_200_000
+    assert result["cost_source"] == "official_pricing_table"
+
+
+def test_deepgram_post_audio_does_not_retry_failed_upload():
+    import requests
+
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    class FailedResponse:
+        status_code = 429
+        text = "rate limited"
+
+        def json(self):
+            return {"err_msg": "rate limited"}
+
+        def raise_for_status(self):
+            raise requests.HTTPError(response=self)
+
+    class FakeSession:
+        def __init__(self):
+            self.post_calls = 0
+
+        def post(self, *args, **kwargs):
+            self.post_calls += 1
+            return FailedResponse()
+
+    session = FakeSession()
+
+    with pytest.raises(RuntimeError, match="Deepgram audio upload failed with status 429"):
+        deepgram._post_audio(session, b"audio", "audio/wav", {"model": "nova-3"}, "key")
+
+    assert session.post_calls == 1
+
+
+def test_deepgram_fallback_model_sends_one_post_per_attempt(monkeypatch):
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    prepared = _prepared_stub(audio_bytes=b"fallback-audio", duration=3.0)
+    attempted_models = []
+
+    monkeypatch.setattr(deepgram, "_get_api_key", lambda: "key")
+    monkeypatch.setattr(deepgram, "_lookup_total_exact_cost", lambda request_ids: (None, "no usage"))
+
+    def fake_post_audio(session, audio_bytes, content_type, request_params, api_key):
+        attempted_models.append(request_params["model"])
+        if request_params["model"] == "nova-2":
+            raise RuntimeError("primary failed")
+        return _deepgram_payload(request_id="dg-fallback", text="fallback text")
+
+    monkeypatch.setattr(deepgram, "_post_audio", fake_post_audio)
+
+    result = deepgram.transcribe(
+        prepared,
+        model="nova-2",
+        fallback_model="nova-3",
+        language_mkd=False,
+    )
+
+    assert attempted_models == ["nova-2", "nova-3"]
+    assert result["request_id"] == ["dg-fallback"]
+    assert result["model"] == "nova-3"
+    assert result["provider_metadata"]["requested_model"] == "nova-2"
+    assert result["provider_metadata"]["actual_model"] == "nova-3"
+    assert result["provider_metadata"]["fallback_model"] == "nova-3"
 
 
 def test_elevenlabs_uses_other_file_format_for_encoded_prepared_upload(monkeypatch):
@@ -491,25 +669,63 @@ def test_removed_deepgram_models_are_forward_compatible():
 def test_deepgram_no_hidden_fallback_by_default(monkeypatch):
     from easy_ai_clients.audio._transcribe._apis import deepgram
 
-    class FakeAudio:
-        def __len__(self):
-            return 1000
+    prepared = _prepared_stub(audio_bytes=b"primary-audio", duration=1.0)
+    attempted_models = []
 
-    calls = []
-    primary_error = RuntimeError("primary failed")
+    monkeypatch.setattr(deepgram, "_get_api_key", lambda: "key")
 
-    def fake_transcribe_with_model(*args, **kwargs):
-        calls.append(args[2])
-        return None, ["req-1"], primary_error
+    def fake_post_audio(session, audio_bytes, content_type, request_params, api_key):
+        attempted_models.append(request_params["model"])
+        raise RuntimeError("primary failed")
 
-    monkeypatch.setattr(deepgram, "load_audio", lambda audio_input: FakeAudio())
-    monkeypatch.setattr(deepgram, "build_balanced_spans", lambda audio: [(0, 1000)])
-    monkeypatch.setattr(deepgram, "_transcribe_with_model", fake_transcribe_with_model)
+    monkeypatch.setattr(deepgram, "_post_audio", fake_post_audio)
 
-    with pytest.raises(RuntimeError, match="primary failed"):
-        deepgram.transcribe("audio.mp3", model="nova-2")
+    with pytest.raises(RuntimeError, match="Transcription with model 'nova-2' failed"):
+        deepgram.transcribe(prepared, model="nova-2")
 
-    assert calls == ["nova-2"]
+    assert attempted_models == ["nova-2"]
+
+
+def test_deepgram_exact_cost_lookup_success_metadata(monkeypatch):
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    monkeypatch.setattr(deepgram, "_lookup_total_exact_cost", lambda request_ids: (0.012345, None))
+
+    metadata = deepgram._resolve_deepgram_cost_metadata(
+        request_ids=["req-1"],
+        model_name="nova-3",
+        audio_duration_seconds=60,
+        diarize=True,
+    )
+
+    assert metadata == {
+        "cost_usd": 0.012345,
+        "cost_source": "usage_lookup",
+        "cost_is_estimated": False,
+        "cost_lookup_error": None,
+    }
+
+
+def test_deepgram_lookup_failure_uses_nova3_estimate(monkeypatch):
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    monkeypatch.setattr(
+        deepgram,
+        "_lookup_total_exact_cost",
+        lambda request_ids: (None, "usage:read scope is required"),
+    )
+
+    metadata = deepgram._resolve_deepgram_cost_metadata(
+        request_ids=["req-1"],
+        model_name="nova-3",
+        audio_duration_seconds=60,
+        diarize=True,
+    )
+
+    assert metadata["cost_usd"] == pytest.approx(0.0112)
+    assert metadata["cost_source"] == "official_pricing_table"
+    assert metadata["cost_is_estimated"] is True
+    assert "usage:read" in metadata["cost_lookup_error"]
 
 
 def test_deepgram_lookup_failure_is_unknown_for_non_nova3(monkeypatch):

@@ -1,11 +1,9 @@
 """Provides Deepgram transcription with centralized pre/post-processing.
 
-Last updated: 2026-04-22
+Last updated: 2026-05-16
 """
 
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import urlencode
@@ -21,14 +19,10 @@ from ..pre_processing import (
     PreparedTranscriptionAudio,
     _clean_text,
     _safe_float,
-    build_balanced_spans,
-    export_segment_as_wav,
-    load_audio,
+    prepare_transcription_audio,
 )
 from ._shared import compute_cost_by_duration, round_cost
 
-MAX_CONCURRENT_NOVA_PRERECORDED = 50
-MAX_CONCURRENT_WHISPER_PRERECORDED = 3
 DOCUMENTED_MODELS = {
     "nova-3",
     "nova-3-general",
@@ -105,7 +99,6 @@ DOCUMENTED_KWARGS = {
     "utt_split",
 }
 
-_MAX_RETRIES = 3
 _REQUEST_TIMEOUT = (20, 1200)
 _MANAGEMENT_TIMEOUT = (10, 60)
 _NOVA_3_MONOLINGUAL_PRICE_PER_MINUTE = 0.0077
@@ -126,7 +119,7 @@ def transcribe(
     resolved_fallback_model = _clean_text(fallback_model) if fallback_model is not None else None
     if resolved_fallback_model:
         _validate_model(resolved_fallback_model)
-    concurrency = options.pop("concurrency", MAX_CONCURRENT_NOVA_PRERECORDED)
+    options.pop("concurrency", None)
     resolved_language = _clean_text(options.pop("language", None))
     paragraphs = bool(options.pop("paragraphs", True))
     filler_words = bool(options.pop("filler_words", True))
@@ -140,21 +133,31 @@ def transcribe(
     if detect_entities is None:
         should_detect_entities = resolved_language.lower().startswith("en") and not _is_whisper_model(primary_model)
 
-    prepared_audio = audio_input if isinstance(audio_input, PreparedTranscriptionAudio) else None
-    audio = load_audio(audio_input)
-    spans = build_balanced_spans(audio)
-    audio_duration_seconds = len(audio) / 1000.0
+    prepared_audio = _prepare_upload_audio(audio_input)
+    audio_duration_seconds = _safe_float(prepared_audio.audio_duration_seconds, 0.0)
     request_ids = []
     successful_model = primary_model
 
-    if not spans:
-        merged_result = _merge_chunk_results([])
-    else:
-        merged_result, primary_request_ids, primary_error = _transcribe_with_model(
-            audio,
-            spans,
-            primary_model,
-            concurrency,
+    result_payload, primary_request_ids, primary_error = _transcribe_with_model(
+        prepared_audio,
+        primary_model,
+        language=resolved_language,
+        paragraphs=paragraphs,
+        filler_words=filler_words,
+        numerals=numerals,
+        measurements=measurements,
+        detect_entities=should_detect_entities,
+        extra_request_params=provider_params,
+    )
+    request_ids.extend(primary_request_ids)
+
+    if primary_error is not None:
+        if not resolved_fallback_model or resolved_fallback_model == primary_model:
+            raise primary_error
+        successful_model = resolved_fallback_model
+        result_payload, fallback_request_ids, fallback_error = _transcribe_with_model(
+            prepared_audio,
+            resolved_fallback_model,
             language=resolved_language,
             paragraphs=paragraphs,
             filler_words=filler_words,
@@ -162,34 +165,13 @@ def transcribe(
             measurements=measurements,
             detect_entities=should_detect_entities,
             extra_request_params=provider_params,
-            request_audio=prepared_audio,
         )
-        request_ids.extend(primary_request_ids)
-
-        if primary_error is not None:
-            if not resolved_fallback_model or resolved_fallback_model == primary_model:
-                raise primary_error
-            successful_model = resolved_fallback_model
-            merged_result, fallback_request_ids, fallback_error = _transcribe_with_model(
-                audio,
-                spans,
-                resolved_fallback_model,
-                concurrency,
-                language=resolved_language,
-                paragraphs=paragraphs,
-                filler_words=filler_words,
-                numerals=numerals,
-                measurements=measurements,
-                detect_entities=should_detect_entities,
-                extra_request_params=provider_params,
-                request_audio=prepared_audio,
-            )
-            request_ids.extend(fallback_request_ids)
-            if fallback_error is not None:
-                raise fallback_error from primary_error
+        request_ids.extend(fallback_request_ids)
+        if fallback_error is not None:
+            raise fallback_error from primary_error
 
     raw_payload = _build_raw_transcription_payload(
-        merged_result,
+        result_payload,
         audio_duration_seconds=audio_duration_seconds,
         model_name=successful_model,
         requested_language=resolved_language,
@@ -231,6 +213,7 @@ def update_cost(result):
     result["cost_lookup_error"] = _sanitize_cost_lookup_error(cost_metadata["cost_lookup_error"])
     return result
 
+
 def _get_api_key():
     """Returns the Deepgram API key from the environment."""
     api_key = str(os.getenv("DEEPGRAM_API_KEY") or "").strip()
@@ -257,23 +240,6 @@ def _is_whisper_model(model_name):
     return _normalize_model_name(model_name).startswith("whisper")
 
 
-def _get_model_concurrency_limit(model_name):
-    """Returns the documented concurrency limit for the requested model."""
-    if _is_whisper_model(model_name):
-        return MAX_CONCURRENT_WHISPER_PRERECORDED
-    return MAX_CONCURRENT_NOVA_PRERECORDED
-
-
-def _coerce_concurrency(requested_concurrency, model_name, spans_count):
-    """Applies the model-specific concurrency cap."""
-    spans_count = max(1, int(spans_count or 1))
-    try:
-        requested_value = int(requested_concurrency)
-    except (TypeError, ValueError):
-        requested_value = _get_model_concurrency_limit(model_name)
-    return max(1, min(requested_value, _get_model_concurrency_limit(model_name), spans_count))
-
-
 def _normalize_request_id_list(request_id):
     """Returns a deduplicated request-id list preserving input order."""
     if isinstance(request_id, str):
@@ -292,189 +258,45 @@ def _normalize_request_id_list(request_id):
 
 
 def _post_audio(session, audio_bytes, content_type, request_params, api_key):
-    """Sends audio to Deepgram with retries and returns the JSON response."""
+    """Sends one audio payload to Deepgram and returns the JSON response."""
     request_url = f"https://api.deepgram.com/v1/listen?{urlencode(request_params, doseq=True)}"
     request_headers = {
         "Authorization": f"Token {api_key}",
         "Content-Type": content_type,
     }
 
-    last_error = None
-    for attempt_number in range(1, _MAX_RETRIES + 1):
-        try:
-            response = session.post(
-                request_url,
-                headers=request_headers,
-                data=audio_bytes,
-                timeout=_REQUEST_TIMEOUT,
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as error:
-            last_error = error
-            if attempt_number < _MAX_RETRIES:
-                time.sleep(2 ** attempt_number)
-
-    response = getattr(last_error, "response", None)
-    if response is not None:
-        try:
-            error_payload = response.json()
-        except Exception:
-            error_payload = response.text
-        raise RuntimeError(
-            f"Deepgram audio upload failed with status {response.status_code}: {error_payload}"
-        ) from last_error
-
-    raise RuntimeError("Deepgram audio upload failed after multiple retries.") from last_error
-
-
-def _shift_timestamps(result_payload, offset_seconds):
-    """Offsets word and utterance timestamps after chunk merging."""
-    response_root = (result_payload.get("results") or {}) if isinstance(result_payload, dict) else {}
-    utterances = response_root.get("utterances", []) or []
-    for utterance in utterances:
-        if utterance.get("start") is not None:
-            utterance["start"] = _safe_float(utterance["start"], 0.0) + offset_seconds
-        if utterance.get("end") is not None:
-            utterance["end"] = _safe_float(utterance["end"], 0.0) + offset_seconds
-        for word in utterance.get("words", []) or []:
-            if word.get("start") is not None:
-                word["start"] = _safe_float(word["start"], 0.0) + offset_seconds
-            if word.get("end") is not None:
-                word["end"] = _safe_float(word["end"], 0.0) + offset_seconds
-
-    channels = response_root.get("channels", []) or []
-    for channel in channels:
-        for alternative in channel.get("alternatives", []) or []:
-            for word in alternative.get("words", []) or []:
-                if word.get("start") is not None:
-                    word["start"] = _safe_float(word["start"], 0.0) + offset_seconds
-                if word.get("end") is not None:
-                    word["end"] = _safe_float(word["end"], 0.0) + offset_seconds
-
-
-def _max_speaker_id(result_payload):
-    """Returns the highest speaker identifier present in a Deepgram response."""
-    highest_speaker_id = -1
-    utterances = ((result_payload.get("results") or {}).get("utterances") or []) if isinstance(result_payload, dict) else []
-
-    for utterance in utterances:
-        if utterance.get("speaker") is not None:
+    try:
+        response = session.post(
+            request_url,
+            headers=request_headers,
+            data=audio_bytes,
+            timeout=_REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as error:
+        response = getattr(error, "response", None)
+        if response is not None:
             try:
-                highest_speaker_id = max(highest_speaker_id, int(utterance.get("speaker")))
+                error_payload = response.json()
             except Exception:
-                pass
-        for word in utterance.get("words", []) or []:
-            if word.get("speaker") is not None:
-                try:
-                    highest_speaker_id = max(highest_speaker_id, int(word.get("speaker")))
-                except Exception:
-                    pass
-    return highest_speaker_id
+                error_payload = response.text
+            raise RuntimeError(
+                f"Deepgram audio upload failed with status {response.status_code}: {error_payload}"
+            ) from error
+
+        raise RuntimeError("Deepgram audio upload failed.") from error
 
 
-def _shift_speaker_ids(result_payload, speaker_offset):
-    """Offsets chunk-local speaker identifiers to avoid collisions after merging."""
-    if speaker_offset <= 0:
-        return
-
-    response_root = (result_payload.get("results") or {}) if isinstance(result_payload, dict) else {}
-    utterances = response_root.get("utterances", []) or []
-    for utterance in utterances:
-        if utterance.get("speaker") is not None:
-            try:
-                utterance["speaker"] = int(utterance["speaker"]) + speaker_offset
-            except Exception:
-                pass
-        for word in utterance.get("words", []) or []:
-            if word.get("speaker") is not None:
-                try:
-                    word["speaker"] = int(word["speaker"]) + speaker_offset
-                except Exception:
-                    pass
-
-    channels = response_root.get("channels", []) or []
-    for channel in channels:
-        for alternative in channel.get("alternatives", []) or []:
-            for word in alternative.get("words", []) or []:
-                if word.get("speaker") is not None:
-                    try:
-                        word["speaker"] = int(word["speaker"]) + speaker_offset
-                    except Exception:
-                        pass
-
-
-def _merge_chunk_results(chunk_results):
-    """Merges multiple ordered chunk responses into a single Deepgram-like payload."""
-    if not chunk_results:
-        return {
-            "metadata": {"duration": 0.0},
-            "results": {
-                "channels": [{"alternatives": [{"transcript": "", "words": []}]}],
-                "utterances": [],
-            },
-        }
-
-    ordered_payloads = [payload for _, payload in sorted(chunk_results, key=lambda item: item[0])]
-    metadata = dict(ordered_payloads[0].get("metadata", {}) or {})
-    metadata["duration"] = sum(_safe_float((payload.get("metadata") or {}).get("duration"), 0.0) for payload in ordered_payloads)
-    metadata["warnings"] = []
-
-    transcripts = []
-    merged_words = []
-    utterances = []
-    detected_language = None
-
-    for payload in ordered_payloads:
-        payload_metadata = payload.get("metadata", {}) or {}
-        metadata["warnings"].extend(payload_metadata.get("warnings", []) or [])
-
-        channels = payload.get("results", {}).get("channels", []) or [{}]
-        channel = channels[0]
-        alternative = (channel.get("alternatives", []) or [{}])[0]
-        transcripts.append(alternative.get("transcript", "") or "")
-        merged_words.extend(alternative.get("words", []) or [])
-        utterances.extend(payload.get("results", {}).get("utterances", []) or [])
-        if detected_language is None:
-            detected_language = channel.get("detected_language")
-
-    return {
-        "metadata": metadata,
-        "results": {
-            "channels": [
-                {
-                    "detected_language": detected_language,
-                    "alternatives": [
-                        {
-                            "transcript": _clean_text(" ".join(transcripts)),
-                            "words": merged_words,
-                        }
-                    ],
-                }
-            ],
-            "utterances": utterances,
-        },
-    }
-
-
-def _transcribe_chunk(audio, span, request_params, api_key):
-    """Uploads one audio chunk and returns the raw Deepgram response."""
-    chunk_start, chunk_end = span
-    audio_bytes, content_type = export_segment_as_wav(audio[chunk_start:chunk_end])
-    with requests.Session() as session:
-        return _post_audio(session, audio_bytes, content_type, request_params, api_key)
-
-
-def _can_upload_prepared_payload(request_audio, audio, spans):
-    """Returns whether Deepgram can receive the prepared object as a single upload."""
-    if not isinstance(request_audio, PreparedTranscriptionAudio):
-        return False
-    if not request_audio.audio_bytes or not request_audio.content_type:
-        return False
-    if len(spans) != 1:
-        return False
-    chunk_start, chunk_end = spans[0]
-    return int(chunk_start or 0) <= 0 and int(chunk_end or 0) >= len(audio)
+def _prepare_upload_audio(audio_input):
+    """Returns one reusable payload for the single Deepgram upload."""
+    if isinstance(audio_input, PreparedTranscriptionAudio):
+        if not audio_input.audio_bytes:
+            raise ValueError("PreparedTranscriptionAudio.audio_bytes is empty.")
+        if not _clean_text(audio_input.content_type):
+            raise ValueError("PreparedTranscriptionAudio.content_type is empty.")
+        return audio_input
+    return prepare_transcription_audio(audio_input)
 
 
 def _normalize_request_params(
@@ -517,94 +339,9 @@ def _normalize_request_params(
     return request_params
 
 
-def _should_retry_without_language(error):
-    """Returns whether the model should be retried with automatic language detection."""
-    error_message = str(error or "").lower()
-    return (
-        "model/language/tier combination" in error_message
-        or "project does not have access to the requested model" in error_message
-    )
-
-
-def _execute_model_transcription(
-    audio,
-    spans,
-    request_params,
-    api_key,
-    actual_concurrency,
-    *,
-    request_audio=None,
-):
-    """Runs one Deepgram request-parameter variant across all chunks."""
-    if _can_upload_prepared_payload(request_audio, audio, spans):
-        with requests.Session() as session:
-            result_payload = _post_audio(
-                session,
-                request_audio.audio_bytes,
-                request_audio.content_type,
-                request_params,
-                api_key,
-            )
-        request_id = _clean_text((result_payload.get("metadata") or {}).get("request_id"))
-        request_ids = [request_id] if request_id else []
-        return _merge_chunk_results([(0, result_payload)]), request_ids
-
-    results_by_index = [None] * len(spans)
-    request_ids = []
-
-    remaining_indices = list(range(len(spans)))
-    if remaining_indices:
-        parallel_concurrency = max(1, min(actual_concurrency, len(remaining_indices)))
-
-        if parallel_concurrency == 1:
-            with requests.Session() as session:
-                for chunk_index in remaining_indices:
-                    chunk_start, chunk_end = spans[chunk_index]
-                    chunk_audio = audio[chunk_start:chunk_end]
-                    chunk_result = _post_audio(
-                        session,
-                        *export_segment_as_wav(chunk_audio),
-                        request_params,
-                        api_key,
-                    )
-                    results_by_index[chunk_index] = chunk_result
-                    request_id = _clean_text((chunk_result.get("metadata") or {}).get("request_id"))
-                    if request_id:
-                        request_ids.append(request_id)
-        else:
-            with ThreadPoolExecutor(max_workers=parallel_concurrency) as executor:
-                future_map = {
-                    executor.submit(_transcribe_chunk, audio, spans[chunk_index], request_params, api_key): chunk_index
-                    for chunk_index in remaining_indices
-                }
-                for future in as_completed(future_map):
-                    chunk_index = future_map[future]
-                    chunk_result = future.result()
-                    results_by_index[chunk_index] = chunk_result
-                    request_id = _clean_text((chunk_result.get("metadata") or {}).get("request_id"))
-                    if request_id:
-                        request_ids.append(request_id)
-
-    ordered_chunk_results = []
-    speaker_offset = 0
-    for chunk_index, chunk_result in enumerate(results_by_index):
-        if chunk_result is None:
-            continue
-        _shift_speaker_ids(chunk_result, speaker_offset)
-        highest_speaker_id = _max_speaker_id(chunk_result)
-        if highest_speaker_id >= 0:
-            speaker_offset = highest_speaker_id + 1
-        _shift_timestamps(chunk_result, spans[chunk_index][0] / 1000.0)
-        ordered_chunk_results.append((chunk_index, chunk_result))
-
-    return _merge_chunk_results(ordered_chunk_results), request_ids
-
-
 def _transcribe_with_model(
-    audio,
-    spans,
+    prepared_audio,
     model_name,
-    concurrency,
     *,
     language=None,
     paragraphs=True,
@@ -613,62 +350,36 @@ def _transcribe_with_model(
     measurements=True,
     detect_entities=False,
     extra_request_params=None,
-    request_audio=None,
 ):
-    """Transcribes all spans with one model."""
-    if not spans:
-        return _merge_chunk_results([]), [], None
-
+    """Transcribes one prepared audio payload with one Deepgram model."""
     api_key = _get_api_key()
-    actual_concurrency = _coerce_concurrency(concurrency, model_name, len(spans))
-    request_variants = [
-        _normalize_request_params(
-            model_name,
-            language=language,
-            paragraphs=paragraphs,
-            filler_words=filler_words,
-            numerals=numerals,
-            measurements=measurements,
-            detect_entities=detect_entities,
-            extra_request_params=extra_request_params,
-        )
-    ]
-    if language:
-        request_variants.append(
-            _normalize_request_params(
-                model_name,
-                language=None,
-                paragraphs=paragraphs,
-                filler_words=filler_words,
-                numerals=numerals,
-                measurements=measurements,
-                detect_entities=detect_entities,
-                extra_request_params=extra_request_params,
-            )
-        )
+    request_params = _normalize_request_params(
+        model_name,
+        language=language,
+        paragraphs=paragraphs,
+        filler_words=filler_words,
+        numerals=numerals,
+        measurements=measurements,
+        detect_entities=detect_entities,
+        extra_request_params=extra_request_params,
+    )
 
-    request_ids = []
-    last_error = None
-    for request_params in request_variants:
-        try:
-            merged_result, variant_request_ids = _execute_model_transcription(
-                audio,
-                spans,
+    try:
+        with requests.Session() as session:
+            result_payload = _post_audio(
+                session,
+                prepared_audio.audio_bytes,
+                prepared_audio.content_type,
                 request_params,
                 api_key,
-                actual_concurrency,
-                request_audio=request_audio,
             )
-            request_ids.extend(variant_request_ids)
-            return merged_result, request_ids, None
-        except Exception as error:
-            last_error = error
-            if not language or request_params.get("language") is None or not _should_retry_without_language(error):
-                break
-
-    runtime_error = RuntimeError(f"Transcription with model '{model_name}' failed.")
-    runtime_error.__cause__ = last_error
-    return None, request_ids, runtime_error
+        request_id = _clean_text((result_payload.get("metadata") or {}).get("request_id"))
+        request_ids = [request_id] if request_id else []
+        return result_payload, request_ids, None
+    except Exception as error:
+        runtime_error = RuntimeError(f"Transcription with model '{model_name}' failed.")
+        runtime_error.__cause__ = error
+        return None, [], runtime_error
 
 
 def _build_raw_transcription_payload(
