@@ -1,6 +1,6 @@
 """Provides Deepgram transcription with centralized pre/post-processing.
 
-Last updated: 2026-05-16
+Last updated: 2026-05-18
 """
 
 import os
@@ -71,6 +71,7 @@ DOCUMENTED_KWARGS = {
     "smart_format",
     "utterances",
     "diarize",
+    "diarize_model",
     "punctuate",
     "detect_language",
     "callback",
@@ -128,7 +129,7 @@ def transcribe(
     detect_entities = options.pop("detect_entities", None)
     language_mkd = options.pop("language_mkd", "en")
     provider_params = _normalize_extra_request_params(options)
-    diarize_enabled = _request_flag(provider_params.get("diarize"), default=True)
+    diarize_enabled = _request_uses_diarization(provider_params)
     should_detect_entities = bool(detect_entities)
     if detect_entities is None:
         should_detect_entities = resolved_language.lower().startswith("en") and not _is_whisper_model(primary_model)
@@ -138,7 +139,7 @@ def transcribe(
     request_ids = []
     successful_model = primary_model
 
-    result_payload, primary_request_ids, primary_error = _transcribe_with_model(
+    result_payload, primary_request_ids, primary_error, request_params = _transcribe_with_model(
         prepared_audio,
         primary_model,
         language=resolved_language,
@@ -155,7 +156,7 @@ def transcribe(
         if not resolved_fallback_model or resolved_fallback_model == primary_model:
             raise primary_error
         successful_model = resolved_fallback_model
-        result_payload, fallback_request_ids, fallback_error = _transcribe_with_model(
+        result_payload, fallback_request_ids, fallback_error, request_params = _transcribe_with_model(
             prepared_audio,
             resolved_fallback_model,
             language=resolved_language,
@@ -178,6 +179,7 @@ def transcribe(
         requested_model=primary_model,
         fallback_model=resolved_fallback_model,
         diarize=diarize_enabled,
+        request_parameters=request_params,
     )
     cost_metadata = _resolve_deepgram_cost_metadata(
         request_ids=request_ids,
@@ -202,9 +204,8 @@ def update_cost(result):
         request_ids=result.get("request_id"),
         model_name=result.get("model"),
         audio_duration_seconds=_safe_float(result.get("duration"), 0.0) / 1000.0,
-        diarize=_request_flag(
-            ((result.get("provider_metadata") or {}).get("request_parameters") or {}).get("diarize"),
-            default=True,
+        diarize=_request_uses_diarization(
+            (result.get("provider_metadata") or {}).get("request_parameters") or {}
         ),
     )
     result["cost_usd"] = cost_metadata["cost_usd"]
@@ -315,9 +316,14 @@ def _normalize_request_params(
         "model": model_name,
         "smart_format": "true",
         "utterances": "true",
-        "diarize": "true",
         "punctuate": "true",
     }
+    extra_params = dict(extra_request_params or {})
+    _validate_diarization_request_params(extra_params)
+    if not _has_request_param_value(extra_params, "diarize_model") and not _has_request_param_value(
+        extra_params, "diarize"
+    ):
+        request_params["diarize"] = "true"
     if language:
         request_params["language"] = language
     else:
@@ -332,7 +338,7 @@ def _normalize_request_params(
         request_params["measurements"] = "true"
     if detect_entities:
         request_params["detect_entities"] = "true"
-    for key, value in dict(extra_request_params or {}).items():
+    for key, value in extra_params.items():
         if value in (None, "", [], {}):
             continue
         request_params[key] = _stringify_query_value(value)
@@ -375,11 +381,11 @@ def _transcribe_with_model(
             )
         request_id = _clean_text((result_payload.get("metadata") or {}).get("request_id"))
         request_ids = [request_id] if request_id else []
-        return result_payload, request_ids, None
+        return result_payload, request_ids, None, request_params
     except Exception as error:
         runtime_error = RuntimeError(f"Transcription with model '{model_name}' failed.")
         runtime_error.__cause__ = error
-        return None, [], runtime_error
+        return None, [], runtime_error, request_params
 
 
 def _build_raw_transcription_payload(
@@ -390,6 +396,7 @@ def _build_raw_transcription_payload(
     requested_model=None,
     fallback_model=None,
     diarize=True,
+    request_parameters=None,
 ):
     """Builds the raw payload consumed by transcription post-processing."""
     result_root = (merged_result.get("results") or {}) if isinstance(merged_result, dict) else {}
@@ -397,6 +404,9 @@ def _build_raw_transcription_payload(
     channel = channels[0]
     alternative = (channel.get("alternatives", []) or [{}])[0]
     metadata = (merged_result.get("metadata") or {}) if isinstance(merged_result, dict) else {}
+    effective_request_parameters = dict(request_parameters or {})
+    if not effective_request_parameters:
+        effective_request_parameters = {"diarize": bool(diarize)}
     return build_raw_transcription_payload(
         provider="deepgram",
         model=model_name,
@@ -417,7 +427,7 @@ def _build_raw_transcription_payload(
             "requested_model": requested_model or model_name,
             "actual_model": model_name,
             "fallback_model": fallback_model,
-            "request_parameters": {"diarize": bool(diarize)},
+            "request_parameters": effective_request_parameters,
         },
         result=merged_result,
     )
@@ -584,6 +594,31 @@ def _request_flag(value, *, default=False):
     return bool(value)
 
 
+def _has_request_param_value(params, key):
+    """Returns whether a Deepgram query parameter has a non-empty caller value."""
+    if not isinstance(params, dict) or key not in params:
+        return False
+    return params.get(key) not in (None, "", [], {})
+
+
+def _validate_diarization_request_params(params):
+    """Reject Deepgram diarization parameter combinations the API does not allow."""
+    if _has_request_param_value(params, "diarize") and _has_request_param_value(
+        params, "diarize_model"
+    ):
+        raise ValueError(
+            "Deepgram does not allow 'diarize' together with 'diarize_model'; "
+            "pass only 'diarize_model'."
+        )
+
+
+def _request_uses_diarization(request_params):
+    """Returns whether request parameters enable Deepgram diarization."""
+    if _has_request_param_value(request_params, "diarize_model"):
+        return True
+    return _request_flag((request_params or {}).get("diarize"), default=True)
+
+
 def _estimate_nova_3_cost(model_name, audio_duration_seconds, *, diarize=True):
     """Calculates deterministic Nova-3 prerecorded cost from public pricing."""
     normalized_model = _normalize_model_name(model_name)
@@ -657,6 +692,7 @@ def _normalize_extra_request_params(options):
     params = {}
     for key, value in dict(options or {}).items():
         params[key] = value
+    _validate_diarization_request_params(params)
     return params
 
 

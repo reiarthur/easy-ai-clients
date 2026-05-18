@@ -1,6 +1,6 @@
 # Deepgram Speech Transcription
 
-Snapshot date: 2026-05-16.
+Snapshot date: 2026-05-18.
 
 ## Overview
 
@@ -23,6 +23,7 @@ The adapter exposes `transcribe(audio_input, model="nova-2", **kwargs)`.
 - Default model: `nova-2`
 - Language behavior with no concrete language: the adapter omits `language` and sends `detect_language=true`.
 - Default request shape: `smart_format=true`, `utterances=true`, `diarize=true`, `punctuate=true`, plus one prepared audio upload.
+- Diarization model selection: when `diarize_model` is provided, the adapter sends `diarize_model` and omits its default `diarize=true`.
 - Upload behavior: one Deepgram Listen request is sent per `audio.transcribe(..., api="deepgram")` call. If an explicit `fallback_model` is attempted, the whole input is tried once with the primary model and once with the fallback model.
 - Fallback behavior: no fallback model is used by default. Pass `fallback_model="..."` explicitly if you want a second whole-input model attempt after the requested model fails. Result metadata records `requested_model`, `actual_model`, and `fallback_model`.
 - Library audio preparation default: normalized WAV. Prepared audio is reused without a second local decode or export when its bytes/content type/duration are already available.
@@ -48,7 +49,8 @@ Removed from the public surface: `base`, `base-general`, `whisper-tiny`, and `wh
 | `detect_entities` | `detect_entities` | bool or `None` | English non-Whisper only | bool | Rejected for Whisper models. | No documented surcharge |
 | `smart_format` | `smart_format` | bool | `True` | bool | Forwarded to Listen query. | No |
 | `utterances` | `utterances` | bool | `True` | bool | Required for strong normalized utterance/segment output. | No |
-| `diarize` | `diarize` | bool | `True` | bool | Speaker diarization. | Yes for Nova-3 table estimate |
+| `diarize` | `diarize` | bool | `True` | bool | Speaker diarization. Do not combine with `diarize_model`. | Yes for Nova-3 table estimate |
+| `diarize_model` | `diarize_model` | string | omitted | Deepgram diarization model selector | Use by itself. When provided, the adapter does not add default `diarize=true`; explicit `diarize` plus `diarize_model` raises `ValueError`. | Yes for Nova-3 table estimate |
 | `punctuate` | `punctuate` | bool | `True` | bool | Punctuation. | No |
 | `callback` | `callback` | string | omitted | URL | Forwarded. | No |
 | `callback_method` | `callback_method` | string | omitted | `POST`, `PUT` | Forwarded. | No |
@@ -128,6 +130,21 @@ bundle = audio.transcribe(
     model="nova-3-general",
 )
 ```
+
+```python
+from easy_ai_clients.audio import transcribe
+
+result = transcribe(
+    "audio.mp3",
+    api="deepgram",
+    model="nova-3-general",
+    diarize_model="latest",
+    filler_words=False,
+)
+```
+
+Pass `diarize_model` without `diarize=True`; Deepgram does not allow both
+parameters on the same Listen request.
 
 ```python
 bundle = audio.transcribe("audio.mp3", api="deepgram")

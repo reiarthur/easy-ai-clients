@@ -5,6 +5,18 @@ The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 0.8.2 - 2026-05-18
+
+### Changed
+
+- Treated Deepgram `diarize_model` as a first-class transcription parameter.
+- Stopped sending the adapter's default `diarize=true` when callers pass
+  `diarize_model`, so Deepgram receives only the newer diarization selector.
+- Rejected explicit Deepgram transcription calls that pass both `diarize` and
+  `diarize_model` with a clear `ValueError`.
+- Expanded Deepgram transcription provider metadata to include the effective
+  Listen request parameters used for debugging and downstream analysis.
+
 ## 0.8.1 - 2026-05-16
 
 ### Changed

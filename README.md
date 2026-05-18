@@ -237,6 +237,22 @@ call, reusing prepared bytes directly when provided. The library does not
 split or chunk Deepgram audio before upload; segment long media before calling
 the library when your workflow needs multiple requests.
 
+To select Deepgram's diarization model, pass `diarize_model` by itself. The
+adapter omits its default `diarize=true` when `diarize_model` is provided, and
+explicit `diarize` plus `diarize_model` calls are rejected.
+
+```python
+from easy_ai_clients.audio import transcribe
+
+result = transcribe(
+    "audio.mp3",
+    api="deepgram",
+    model="nova-3-general",
+    diarize_model="latest",
+    filler_words=False,
+)
+```
+
 Transcription prepares normalized WAV by default for safety and backwards
 compatibility. To avoid repeated local decode/export while trying multiple
 providers or models, prepare once:

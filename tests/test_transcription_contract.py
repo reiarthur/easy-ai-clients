@@ -341,6 +341,81 @@ def test_deepgram_prepared_single_upload_uses_prepared_bytes(monkeypatch):
     assert result["cost_source"] == "official_pricing_table"
 
 
+def test_deepgram_diarize_model_omits_default_diarize():
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    params = deepgram._normalize_request_params(  # noqa: SLF001
+        "nova-3-general",
+        extra_request_params={"diarize_model": "latest"},
+    )
+
+    assert params["diarize_model"] == "latest"
+    assert "diarize" not in params
+
+
+def test_deepgram_default_still_enables_diarize():
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    params = deepgram._normalize_request_params(  # noqa: SLF001
+        "nova-3-general",
+        extra_request_params={},
+    )
+
+    assert params["diarize"] == "true"
+
+
+def test_deepgram_rejects_explicit_diarize_and_diarize_model_conflict():
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    with pytest.raises(ValueError, match="does not allow 'diarize' together with 'diarize_model'"):
+        deepgram._normalize_request_params(  # noqa: SLF001
+            "nova-3-general",
+            extra_request_params={"diarize": True, "diarize_model": "latest"},
+        )
+
+    with pytest.raises(ValueError, match="does not allow 'diarize' together with 'diarize_model'"):
+        deepgram.transcribe(_prepared_stub(), diarize=True, diarize_model="latest")
+
+
+def test_deepgram_dispatcher_diarize_model_uses_effective_request_params(monkeypatch):
+    from easy_ai_clients import audio
+    from easy_ai_clients.audio._transcribe._apis import deepgram
+
+    prepared = _prepared_stub(audio_bytes=b"dispatcher-wav", duration=2.0)
+    calls = []
+
+    monkeypatch.setattr(audio, "prepare_transcription_audio", lambda audio_input, **kwargs: prepared)
+    monkeypatch.setattr(deepgram, "_get_api_key", lambda: "key")
+    monkeypatch.setattr(deepgram, "_lookup_total_exact_cost", lambda request_ids: (None, "no usage"))
+
+    def fake_post_audio(session, audio_bytes, content_type, request_params, api_key):
+        calls.append(
+            {
+                "audio_bytes": audio_bytes,
+                "content_type": content_type,
+                "request_params": request_params,
+            }
+        )
+        return _deepgram_payload()
+
+    monkeypatch.setattr(deepgram, "_post_audio", fake_post_audio)
+
+    result = audio.transcribe(
+        "audio.mp3",
+        api="deepgram",
+        model="nova-3-general",
+        diarize_model="latest",
+        filler_words=False,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["request_params"]["diarize_model"] == "latest"
+    assert "diarize" not in calls[0]["request_params"]
+    assert "filler_words" not in calls[0]["request_params"]
+    assert result["provider_metadata"]["request_parameters"]["diarize_model"] == "latest"
+    assert "diarize" not in result["provider_metadata"]["request_parameters"]
+
+
 def test_deepgram_dispatcher_sends_single_post_for_one_input(monkeypatch):
     from easy_ai_clients import audio
     from easy_ai_clients.audio._transcribe._apis import deepgram

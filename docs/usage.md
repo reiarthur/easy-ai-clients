@@ -144,6 +144,24 @@ For Deepgram, the prepared payload is sent as one provider request per
 `transcribe(...)` call; the adapter does not split or chunk audio before upload.
 Segment long media before calling the library if you want multiple Deepgram
 requests.
+
+For Deepgram's newer diarization model selector, pass `diarize_model` without
+also passing `diarize=True`. The adapter omits its default `diarize=true` when
+`diarize_model` is present and rejects explicit `diarize` plus
+`diarize_model` conflicts.
+
+```python
+from easy_ai_clients.audio import transcribe
+
+result = transcribe(
+    "audio.mp3",
+    api="deepgram",
+    model="nova-3-general",
+    diarize_model="latest",
+    filler_words=False,
+)
+```
+
 When comparing providers or models, prepare the audio once and reuse it:
 
 ```python
