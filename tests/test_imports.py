@@ -14,6 +14,9 @@ def test_top_level_exports():
     assert hasattr(easy_ai_clients, "audio")
     assert hasattr(easy_ai_clients, "image")
     assert hasattr(easy_ai_clients, "video")
+    assert hasattr(easy_ai_clients, "media")
+    assert hasattr(easy_ai_clients, "webhooks")
+    assert hasattr(easy_ai_clients, "account")
     assert isinstance(easy_ai_clients.__version__, str)
 
 
@@ -30,12 +33,17 @@ def test_audio_dispatchers_callable():
     from easy_ai_clients import audio
 
     assert callable(audio.generate)
+    assert callable(audio.list_voices)
+    assert callable(audio.get_voice)
+    assert callable(audio.design_voice)
+    assert callable(audio.clone_voice)
     assert callable(audio.prepare_transcription_audio)
     assert callable(audio.transcribe)
     assert callable(audio.update_cost)
     assert audio.PreparedTranscriptionAudio is not None
     assert isinstance(audio.available_synthesize_apis(), tuple)
     assert isinstance(audio.available_transcribe_apis(), tuple)
+    assert isinstance(audio.available_voice_apis(), tuple)
 
 
 def test_image_dispatchers_callable():
@@ -60,6 +68,10 @@ def test_video_dispatchers_callable():
     assert callable(video.create_avatar)
     assert callable(video.image_lipsync)
     assert callable(video.video_lipsync)
+    assert callable(video.agent_video)
+    assert callable(video.translate)
+    assert callable(video.list_videos)
+    assert callable(video.list_agent_styles)
     assert callable(video.get_status)
     assert callable(video.get_result)
     assert callable(video.download)
@@ -72,6 +84,9 @@ def test_video_dispatchers_callable():
     assert isinstance(video.available_create_avatar_apis(), tuple)
     assert isinstance(video.available_image_lipsync_apis(), tuple)
     assert isinstance(video.available_video_lipsync_apis(), tuple)
+    assert isinstance(video.available_agent_video_apis(), tuple)
+    assert isinstance(video.available_translate_apis(), tuple)
+    assert isinstance(video.available_video_resource_apis(), tuple)
 
 
 @pytest.mark.parametrize(
@@ -83,38 +98,54 @@ def test_video_dispatchers_callable():
             "together", "xai",
         )),
         ("audio", "_synthesize._apis", (
-            "deepinfra", "elevenlabs", "google", "mistral",
-            "openai", "together", "xai",
+            "deepgram", "deepinfra", "elevenlabs", "google", "groq", "heygen",
+            "mistral", "openai", "openrouter", "runway", "stability", "together",
+            "xai",
+        )),
+        ("audio", "_voices._apis", (
+            "deepinfra", "elevenlabs", "heygen", "mistral", "together",
         )),
         ("audio", "_transcribe._apis", (
-            "deepgram", "elevenlabs", "falai", "fireworks",
-            "speechmatics", "together",
+            "deepinfra", "deepgram", "elevenlabs", "falai", "fireworks",
+            "google", "groq", "huggingface", "mistral", "openai", "openrouter",
+            "speechmatics", "together", "xai",
         )),
         ("image", "_generate._apis", (
-            "bfl", "falai", "fireworks", "google", "openai",
-            "openrouter", "stability", "together", "xai",
+            "bfl", "deepinfra", "falai", "fireworks", "google", "huggingface",
+            "openai", "openrouter", "runway", "stability", "together", "xai",
         )),
         ("image", "_edit._apis", (
-            "bfl", "falai", "fireworks", "google", "openai",
-            "openrouter", "stability", "together", "xai",
+            "bfl", "deepinfra", "falai", "fireworks", "google", "huggingface",
+            "openai", "openrouter", "runway", "stability", "together", "xai",
         )),
         ("image", "_remix._apis", (
-            "bfl", "falai", "fireworks", "google", "openai",
-            "openrouter", "stability", "together", "xai",
+            "bfl", "deepinfra", "falai", "fireworks", "google", "huggingface",
+            "openai", "openrouter", "runway", "stability", "together", "xai",
         )),
         ("image", "_analyze._apis", (
-            "anthropic", "falai", "fireworks", "google", "groq",
-            "openai", "openrouter", "together", "xai",
+            "anthropic", "deepinfra", "falai", "fireworks", "google", "groq",
+            "huggingface", "mistral", "openai", "openrouter", "together", "xai",
         )),
-        ("video", "_text_to_video._apis", ("falai", "google", "hedra", "runway")),
-        ("video", "_image_to_video._apis", ("falai", "google", "hedra", "runway")),
-        ("video", "_video_to_video._apis", ("falai", "google", "hedra", "runway")),
+        ("video", "_text_to_video._apis", (
+            "falai", "google", "hedra", "heygen", "huggingface", "runway",
+            "together", "xai",
+        )),
+        ("video", "_image_to_video._apis", (
+            "falai", "google", "hedra", "heygen", "runway", "together", "xai",
+        )),
+        ("video", "_video_to_video._apis", ("falai", "google", "hedra", "runway", "together", "xai")),
         ("video", "_motion_control._apis", ("falai", "hedra", "runway")),
-        ("video", "_avatar_video._apis", ("falai", "hedra", "runway")),
-        ("video", "_video_with_audio._apis", ("hedra",)),
-        ("video", "_create_avatar._apis", ("runway",)),
-        ("video", "_image_lipsync._apis", ("falai",)),
-        ("video", "_video_lipsync._apis", ("falai",)),
+        ("video", "_avatar_video._apis", ("falai", "hedra", "heygen", "runway")),
+        ("video", "_video_with_audio._apis", ("hedra", "runway", "together")),
+        ("video", "_create_avatar._apis", ("heygen", "runway")),
+        ("video", "_image_lipsync._apis", ("falai", "heygen")),
+        ("video", "_video_lipsync._apis", ("falai", "heygen")),
+        ("video", "_agent_video._apis", ("heygen",)),
+        ("video", "_translate._apis", ("heygen",)),
+        ("video", "_resources._apis", ("heygen",)),
+        ("media", "_apis", ("heygen",)),
+        ("webhooks", "_apis", ("heygen",)),
+        ("account", "_apis", ("heygen",)),
     ],
 )
 def test_provider_modules_import(modality, operation, providers):
@@ -144,6 +175,8 @@ def test_unknown_api_returns_normalized_error():
         video.create_avatar(image="avatar.png", name="Agent", voice="clara", api="bogus"),
         video.image_lipsync(image="img.png", audio="voice.wav", api="bogus"),
         video.video_lipsync(video="speaker.mp4", audio="voice.wav", api="bogus"),
+        video.agent_video("make a launch video", api="bogus"),
+        video.translate(video="speaker.mp4", output_languages=["Spanish"], api="bogus"),
     ]
 
     assert all(item["error"]["provider"] == "bogus" for item in results)

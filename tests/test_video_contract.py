@@ -22,6 +22,8 @@ def test_video_docs_match_dispatcher_provider_matrix():
         "create_avatar": video.available_create_avatar_apis(),
         "image_lipsync": video.available_image_lipsync_apis(),
         "video_lipsync": video.available_video_lipsync_apis(),
+        "agent_video": video.available_agent_video_apis(),
+        "translate": video.available_translate_apis(),
     }
     providers_doc = (ROOT / "docs" / "providers.md").read_text(encoding="utf-8")
 
@@ -37,7 +39,7 @@ def test_video_env_vars_are_documented_and_templated():
     configuration = (ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
     providers = (ROOT / "docs" / "providers.md").read_text(encoding="utf-8")
 
-    for name in ("FAL_KEY", "GOOGLE_API_KEY", "HEDRA_API_KEY", "RUNWAYML_API_SECRET"):
+    for name in ("FAL_KEY", "GOOGLE_API_KEY", "HEDRA_API_KEY", "RUNWAYML_API_SECRET", "HEYGEN_KEY"):
         assert name in env_example
         assert name in configuration
         assert name in providers
@@ -59,6 +61,42 @@ def test_video_dispatcher_public_exports_do_not_expose_private_helpers():
         "create_avatar",
         "image_lipsync",
         "video_lipsync",
+        "agent_video",
+        "translate",
+        "list_videos",
+        "get_video",
+        "delete_video",
+        "list_lipsyncs",
+        "get_lipsync",
+        "update_lipsync",
+        "delete_lipsync",
+        "list_translations",
+        "get_translation",
+        "update_translation",
+        "delete_translation",
+        "get_translation_caption",
+        "list_translation_languages",
+        "create_proofread",
+        "get_proofread",
+        "generate_proofread",
+        "get_proofread_srt",
+        "update_proofread_srt",
+        "list_avatars",
+        "get_avatar",
+        "delete_avatar",
+        "create_avatar_consent",
+        "list_avatar_looks",
+        "get_avatar_look",
+        "update_avatar_look",
+        "delete_avatar_look",
+        "list_brand_kits",
+        "list_agent_sessions",
+        "get_agent_session",
+        "send_agent_message",
+        "stop_agent_session",
+        "list_agent_styles",
+        "get_agent_resource",
+        "list_agent_videos",
         "get_status",
         "get_result",
         "download",
@@ -72,6 +110,9 @@ def test_video_dispatcher_public_exports_do_not_expose_private_helpers():
         "available_create_avatar_apis",
         "available_image_lipsync_apis",
         "available_video_lipsync_apis",
+        "available_agent_video_apis",
+        "available_translate_apis",
+        "available_video_resource_apis",
     }
 
     assert set(video.__all__) == expected

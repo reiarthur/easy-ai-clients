@@ -29,8 +29,11 @@ from ..pre_processing import (
     resolve_language_code,
     split_near_middle,
 )
+from ._simple import _result_from_audio_bytes
 
 API_URL_TEMPLATE = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
+SOUND_EFFECTS_URL = "https://api.elevenlabs.io/v1/sound-generation"
+MUSIC_COMPOSE_URL = "https://api.elevenlabs.io/v1/music/compose"
 MODELS_URL = "https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps"
 CATALOG_URL = "https://elevenlabs.io/docs/api-reference/models/get-all"
 PRICING_URL = "https://elevenlabs.io/pricing/api/"
@@ -101,6 +104,9 @@ OUTPUT_FORMATS = {
     "opus_48000_192",
 }
 DOCUMENTED_KWARGS = {
+    "audio_type",
+    "duration_seconds",
+    "prompt_influence",
     "stability",
     "similarity_boost",
     "style",
@@ -139,6 +145,11 @@ def generate(
     model_config = DOCUMENTED_MODEL_METADATA.get(model, _UNKNOWN_MODEL_METADATA)
     documented_model = model in DOCUMENTED_MODEL_METADATA
     options = reject_unknown_kwargs("ElevenLabs", model, kwargs, DOCUMENTED_KWARGS)
+    audio_type = str(options.pop("audio_type", "speech")).strip().lower()
+    if audio_type in {"sound", "sound_effect", "sound_effects", "sfx"}:
+        return _generate_sound_effect(text, model=model, options=options)
+    if audio_type in {"music", "song"}:
+        return _generate_music(text, model=model, options=options)
     stability = validate_number_range(options.pop("stability", 0.7), parameter_name="stability", provider="ElevenLabs", model=model, minimum=0.0, maximum=1.0)
     similarity_boost = validate_number_range(options.pop("similarity_boost", 0.9), parameter_name="similarity_boost", provider="ElevenLabs", model=model, minimum=0.0, maximum=1.0)
     style = validate_number_range(options.pop("style", 0.0), parameter_name="style", provider="ElevenLabs", model=model, minimum=0.0, maximum=1.0)
@@ -236,6 +247,79 @@ def generate(
     if not documented_model:
         result["warnings"] = f"No documented pricing metadata is available for ElevenLabs model `{model}`."
     return result
+
+
+def _generate_sound_effect(text: str, *, model: str, options: dict[str, Any]) -> dict[str, Any]:
+    api_key = ensure_env_var("ELEVENLABS_API_KEY")
+    timeout_seconds = float(options.pop("timeout_seconds", 120))
+    output_format = str(options.pop("output_format", "mp3_44100_128")).strip()
+    duration_seconds = options.pop("duration_seconds", None)
+    payload = {"text": text}
+    if duration_seconds is not None:
+        payload["duration_seconds"] = float(duration_seconds)
+    if options.get("prompt_influence") is not None:
+        payload["prompt_influence"] = float(options.pop("prompt_influence"))
+    payload.update({key: value for key, value in options.items() if value is not None})
+    response = request_with_retries(
+        "POST",
+        SOUND_EFFECTS_URL,
+        headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        },
+        params={"output_format": output_format},
+        json_body=payload,
+        timeout=(10.0, timeout_seconds),
+    )
+    return _result_from_audio_bytes(
+        bytes(response.content or b""),
+        audio_format=_audio_format_from_output_format(output_format),
+        text="",
+        cost_usd=0.0,
+        cost_source="unavailable",
+        cost_is_estimated=False,
+        provider="elevenlabs",
+        model=model,
+        request_id=getattr(response, "headers", {}).get("request-id"),
+        audio_type="sound_effect",
+        cost_details={"character_cost": _parse_character_cost(response.headers, fallback=len(text))},
+    )
+
+
+def _generate_music(text: str, *, model: str, options: dict[str, Any]) -> dict[str, Any]:
+    api_key = ensure_env_var("ELEVENLABS_API_KEY")
+    timeout_seconds = float(options.pop("timeout_seconds", 300))
+    output_format = str(options.pop("output_format", "mp3_44100_128")).strip()
+    payload = {"prompt": text}
+    if options.get("duration_seconds") is not None:
+        payload["duration_seconds"] = float(options.pop("duration_seconds"))
+    payload.update({key: value for key, value in options.items() if value is not None})
+    response = request_with_retries(
+        "POST",
+        MUSIC_COMPOSE_URL,
+        headers={
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        },
+        params={"output_format": output_format},
+        json_body=payload,
+        timeout=(10.0, timeout_seconds),
+    )
+    return _result_from_audio_bytes(
+        bytes(response.content or b""),
+        audio_format=_audio_format_from_output_format(output_format),
+        text="",
+        cost_usd=0.0,
+        cost_source="unavailable",
+        cost_is_estimated=False,
+        provider="elevenlabs",
+        model=model,
+        request_id=getattr(response, "headers", {}).get("request-id"),
+        audio_type="music",
+        cost_details={"character_cost": _parse_character_cost(response.headers, fallback=len(text))},
+    )
 
 
 def _calculate_read_timeout(text_length: int, timeout_seconds: float) -> float:
@@ -501,8 +585,10 @@ __all__ = [
     "CATALOG_URL",
     "DEFAULT_VOICE",
     "DOCUMENTED_MODEL_METADATA",
+    "MUSIC_COMPOSE_URL",
     "MODELS_URL",
     "OUTPUT_FORMATS",
     "PRICING_URL",
+    "SOUND_EFFECTS_URL",
     "generate",
 ]

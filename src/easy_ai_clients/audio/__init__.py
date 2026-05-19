@@ -19,34 +19,54 @@ from ._transcribe.pre_processing import PreparedTranscriptionAudio, prepare_tran
 __all__ = [
     "PreparedTranscriptionAudio",
     "generate",
+    "list_voices",
+    "get_voice",
+    "design_voice",
+    "clone_voice",
     "prepare_transcription_audio",
     "transcribe",
     "update_cost",
     "available_synthesize_apis",
     "available_transcribe_apis",
+    "available_voice_apis",
 ]
 
 
 _SYNTHESIZE_APIS = (
+    "deepgram",
     "deepinfra",
     "elevenlabs",
     "google",
+    "groq",
+    "heygen",
     "mistral",
     "openai",
+    "openrouter",
+    "runway",
+    "stability",
     "together",
     "xai",
 )
 
 _TRANSCRIBE_APIS = (
+    "deepinfra",
     "deepgram",
     "elevenlabs",
     "falai",
     "fireworks",
+    "google",
+    "groq",
+    "huggingface",
+    "mistral",
+    "openai",
+    "openrouter",
     "speechmatics",
     "together",
+    "xai",
 )
 
 _AUDIO_OPTION_UNSET = object()
+_VOICE_APIS = ("deepinfra", "elevenlabs", "heygen", "mistral", "together")
 
 
 def available_synthesize_apis():
@@ -59,6 +79,12 @@ def available_transcribe_apis():
     """Return the tuple of supported transcription provider identifiers."""
 
     return _TRANSCRIBE_APIS
+
+
+def available_voice_apis():
+    """Return the tuple of supported voice-management provider identifiers."""
+
+    return _VOICE_APIS
 
 
 def _load_synthesize(api):
@@ -87,6 +113,19 @@ def _load_transcribe(api):
             f"{', '.join(_TRANSCRIBE_APIS)}."
         )
     return importlib.import_module(f"._transcribe._apis.{api}", __name__)
+
+
+def _load_voice(api):
+    if not isinstance(api, str) or not api:
+        raise ValueError(
+            "audio voice operations require the keyword argument 'api'. "
+            f"Available APIs: {', '.join(_VOICE_APIS)}."
+        )
+    if api not in _VOICE_APIS:
+        raise ValueError(
+            f"Unknown audio voice API '{api}'. Available APIs: {', '.join(_VOICE_APIS)}."
+        )
+    return importlib.import_module(f"._voices._apis.{api}", __name__)
 
 
 def generate(text, model=None, voice=None, language_code="en", *, api, **kwargs):
@@ -119,6 +158,10 @@ def generate(text, model=None, voice=None, language_code="en", *, api, **kwargs)
         return attach_error(
             {
                 "cost_usd": 0.0,
+                "cost_currency": "USD",
+                "cost_source": "unavailable",
+                "cost_is_estimated": False,
+                "cost_details": {},
                 "audio": None,
                 "words": {},
                 "warnings": error_message(exc),
@@ -202,8 +245,10 @@ def transcribe(
                 "provider_metadata": {},
                 "request_id": None,
                 "cost_usd": 0.0,
+                "cost_currency": "USD",
                 "cost_source": "unavailable",
                 "cost_is_estimated": False,
+                "cost_details": {},
                 "cost_lookup_error": message,
                 "warnings": message,
             },
@@ -212,6 +257,58 @@ def transcribe(
             operation="transcribe",
             model=model,
         )
+
+
+def list_voices(*, api, **kwargs):
+    """List voices exposed by the selected provider."""
+
+    try:
+        return _load_voice(api).list_voices(**kwargs)
+    except Exception as exc:
+        return _voice_failure(exc, api=api, operation="list_voices")
+
+
+def get_voice(voice_id, *, api, **kwargs):
+    """Fetch one provider voice by id."""
+
+    try:
+        return _load_voice(api).get_voice(voice_id, **kwargs)
+    except Exception as exc:
+        return _voice_failure(exc, api=api, operation="get_voice")
+
+
+def design_voice(prompt, *, api, **kwargs):
+    """Design or search for voices from a natural-language prompt."""
+
+    try:
+        return _load_voice(api).design_voice(prompt, **kwargs)
+    except Exception as exc:
+        return _voice_failure(exc, api=api, operation="design_voice")
+
+
+def clone_voice(audio_input=None, voice_name=None, *, api, **kwargs):
+    """Create a cloned voice when the selected provider supports cloning."""
+
+    try:
+        return _load_voice(api).clone_voice(audio_input=audio_input, voice_name=voice_name, **kwargs)
+    except Exception as exc:
+        return _voice_failure(exc, api=api, operation="clone_voice")
+
+
+def _voice_failure(exc, *, api, operation):
+    message = error_message(exc)
+    return attach_error(
+        {
+            "provider": api,
+            "operation": operation,
+            "data": None,
+            "raw_response": {},
+            "warnings": message,
+        },
+        exc,
+        provider=api,
+        operation=operation,
+    )
 
 
 def update_cost(operation, result, *, api):

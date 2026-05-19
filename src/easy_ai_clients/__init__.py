@@ -8,7 +8,10 @@ Importing :mod:`easy_ai_clients` exposes four ergonomic submodules:
 - :mod:`easy_ai_clients.image` - image generation, editing, remixing, and
   vision/multimodal analysis.
 - :mod:`easy_ai_clients.video` - text-to-video, image-to-video, motion control,
-  and lip-sync generation.
+  lip-sync, agent video, and translation generation.
+- :mod:`easy_ai_clients.media` - provider asset upload and deletion helpers.
+- :mod:`easy_ai_clients.webhooks` - provider webhook endpoint helpers.
+- :mod:`easy_ai_clients.account` - account and billing lookup helpers.
 
 Each operation accepts an ``api`` keyword argument identifying the provider to
 use. The string must match the file name (without ``.py``) of the internal
@@ -16,7 +19,7 @@ provider module shipped with the library.
 
 Example::
 
-    from easy_ai_clients import text, audio, image, video
+    from easy_ai_clients import text, audio, image, video, media, webhooks, account
 
     text.generate("hello", api="openai")
     audio.generate("hello world", api="openai")
@@ -30,8 +33,8 @@ Example::
 
 from __future__ import annotations
 
-from . import audio, image, text, video
+from . import account, audio, image, media, text, video, webhooks
 
-__all__ = ["text", "audio", "image", "video", "__version__"]
+__all__ = ["text", "audio", "image", "video", "media", "webhooks", "account", "__version__"]
 
-__version__ = "0.8.2"
+__version__ = "0.9.0"

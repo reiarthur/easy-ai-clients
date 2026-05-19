@@ -5,6 +5,33 @@ The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 0.9.0 - 2026-05-19
+
+### Added
+
+- Added HeyGen v3 support for speech, voices, compatible video operations,
+  Video Agent, video translation, lip-sync, avatar creation, assets, webhooks,
+  and account lookup through the public dispatcher layer.
+- Added `easy_ai_clients.media`, `easy_ai_clients.webhooks`, and
+  `easy_ai_clients.account` modules for reusable provider helper categories.
+- Added current non-legacy provider gaps across existing audio, image, and
+  video subcategories, including OpenAI/Groq/xAI/OpenRouter transcription,
+  Deepgram Aura TTS, ElevenLabs sound/music and voice helpers, Hugging Face
+  media adapters, DeepInfra/Mistral vision/audio paths, Together/xAI video
+  adapters, Runway image/audio/video-with-audio paths, and Stable Audio.
+- Added documentation pages for audio voice helpers, HeyGen media/webhook/account
+  helpers, HeyGen video resources, and a cross-category operation example guide.
+
+### Changed
+
+- Expanded provider discovery, docs, environment templates, and contract tests
+  for the HeyGen v3 integration.
+- Standardized new media return metadata around `cost_usd`, `cost_currency`,
+  `cost_is_estimated`, `cost_source`, and `cost_details`, while preserving
+  image `cust_usd` as a legacy alias.
+- Added documentation coverage tests so public dispatcher provider matrices stay
+  linked from the provider docs index.
+
 ## 0.8.2 - 2026-05-18
 
 ### Changed

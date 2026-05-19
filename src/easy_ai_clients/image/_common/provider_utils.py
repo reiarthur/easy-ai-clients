@@ -374,6 +374,9 @@ def image_result(
     warnings: str = "",
     cust_usd: Decimal | float = 0.0,
     request_id: str = "",
+    cost_source: str | None = None,
+    cost_is_estimated: bool = True,
+    cost_details: dict[str, Any] | None = None,
 ) -> ImageOperationResult:
     """Build the normalized result contract for image-returning operations.
 
@@ -382,14 +385,25 @@ def image_result(
         warnings: Public warning text.
         cust_usd: Exact or best-known USD cost.
         request_id: Provider request/job identifier, or `""`.
+        cost_source: Source used for cost calculation.
+        cost_is_estimated: Whether the value is table/estimate based.
+        cost_details: Provider/adapter specific cost metadata.
 
     Returns:
-        Dictionary containing exactly `cust_usd`, `base64`, `warnings`, and
-        `request_id`.
+        Dictionary containing the legacy `cust_usd` key plus the standard
+        `cost_usd` cost metadata used by other modalities.
     """
 
+    cost_value = decimal_to_float(cust_usd)
+    if cost_source is None:
+        cost_source = "official_pricing_table" if cost_value else "unavailable"
     return {
-        "cust_usd": decimal_to_float(cust_usd),
+        "cust_usd": cost_value,
+        "cost_usd": cost_value,
+        "cost_currency": "USD",
+        "cost_is_estimated": bool(cost_is_estimated),
+        "cost_source": cost_source,
+        "cost_details": dict(cost_details or {}),
         "base64": base64_value,
         "warnings": warnings,
         "request_id": request_id,
@@ -402,6 +416,9 @@ def analyze_result(
     cost_usd: Decimal | float = 0.0,
     input_text: str = "",
     output: str = "",
+    cost_source: str | None = None,
+    cost_is_estimated: bool = True,
+    cost_details: dict[str, Any] | None = None,
 ) -> AnalyzeOperationResult:
     """Build the normalized result contract for analyze operations.
 
@@ -410,15 +427,24 @@ def analyze_result(
         cost_usd: Exact or best-known USD cost.
         input_text: Normalized prompt sent to the provider.
         output: Text returned by the provider or normalized error text.
+        cost_source: Source used for cost calculation.
+        cost_is_estimated: Whether the value is table/estimate based.
+        cost_details: Provider/adapter specific cost metadata.
 
     Returns:
-        Dictionary containing exactly `request_id`, `cost_usd`, `input_text`,
-        and `output`.
+        Dictionary containing normalized text output and standard cost metadata.
     """
 
+    cost_value = decimal_to_float(cost_usd)
+    if cost_source is None:
+        cost_source = "official_pricing_table" if cost_value else "unavailable"
     return {
         "request_id": request_id,
-        "cost_usd": decimal_to_float(cost_usd),
+        "cost_usd": cost_value,
+        "cost_currency": "USD",
+        "cost_is_estimated": bool(cost_is_estimated),
+        "cost_source": cost_source,
+        "cost_details": dict(cost_details or {}),
         "input_text": input_text,
         "output": output,
     }

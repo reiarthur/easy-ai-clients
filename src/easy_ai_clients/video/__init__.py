@@ -26,6 +26,42 @@ __all__ = [
     "create_avatar",
     "image_lipsync",
     "video_lipsync",
+    "agent_video",
+    "translate",
+    "list_videos",
+    "get_video",
+    "delete_video",
+    "list_lipsyncs",
+    "get_lipsync",
+    "update_lipsync",
+    "delete_lipsync",
+    "list_translations",
+    "get_translation",
+    "update_translation",
+    "delete_translation",
+    "get_translation_caption",
+    "list_translation_languages",
+    "create_proofread",
+    "get_proofread",
+    "generate_proofread",
+    "get_proofread_srt",
+    "update_proofread_srt",
+    "list_avatars",
+    "get_avatar",
+    "delete_avatar",
+    "create_avatar_consent",
+    "list_avatar_looks",
+    "get_avatar_look",
+    "update_avatar_look",
+    "delete_avatar_look",
+    "list_brand_kits",
+    "list_agent_sessions",
+    "get_agent_session",
+    "send_agent_message",
+    "stop_agent_session",
+    "list_agent_styles",
+    "get_agent_resource",
+    "list_agent_videos",
     "get_status",
     "get_result",
     "download",
@@ -39,18 +75,24 @@ __all__ = [
     "available_create_avatar_apis",
     "available_image_lipsync_apis",
     "available_video_lipsync_apis",
+    "available_agent_video_apis",
+    "available_translate_apis",
+    "available_video_resource_apis",
 ]
 
 
-_TEXT_TO_VIDEO_APIS = ("falai", "google", "hedra", "runway")
-_IMAGE_TO_VIDEO_APIS = ("falai", "google", "hedra", "runway")
-_VIDEO_TO_VIDEO_APIS = ("falai", "google", "hedra", "runway")
+_TEXT_TO_VIDEO_APIS = ("falai", "google", "hedra", "heygen", "huggingface", "runway", "together", "xai")
+_IMAGE_TO_VIDEO_APIS = ("falai", "google", "hedra", "heygen", "runway", "together", "xai")
+_VIDEO_TO_VIDEO_APIS = ("falai", "google", "hedra", "runway", "together", "xai")
 _MOTION_CONTROL_APIS = ("falai", "hedra", "runway")
-_AVATAR_VIDEO_APIS = ("falai", "hedra", "runway")
-_VIDEO_WITH_AUDIO_APIS = ("hedra",)
-_CREATE_AVATAR_APIS = ("runway",)
-_IMAGE_LIPSYNC_APIS = ("falai",)
-_VIDEO_LIPSYNC_APIS = ("falai",)
+_AVATAR_VIDEO_APIS = ("falai", "hedra", "heygen", "runway")
+_VIDEO_WITH_AUDIO_APIS = ("hedra", "runway", "together")
+_CREATE_AVATAR_APIS = ("heygen", "runway")
+_IMAGE_LIPSYNC_APIS = ("falai", "heygen")
+_VIDEO_LIPSYNC_APIS = ("falai", "heygen")
+_AGENT_VIDEO_APIS = ("heygen",)
+_TRANSLATE_APIS = ("heygen",)
+_VIDEO_RESOURCE_APIS = ("heygen",)
 
 _OPERATION_APIS = {
     "text_to_video": _TEXT_TO_VIDEO_APIS,
@@ -62,6 +104,8 @@ _OPERATION_APIS = {
     "create_avatar": _CREATE_AVATAR_APIS,
     "image_lipsync": _IMAGE_LIPSYNC_APIS,
     "video_lipsync": _VIDEO_LIPSYNC_APIS,
+    "agent_video": _AGENT_VIDEO_APIS,
+    "translate": _TRANSLATE_APIS,
 }
 
 _OPERATION_FUNCTIONS = {
@@ -74,6 +118,8 @@ _OPERATION_FUNCTIONS = {
     "create_avatar": "create_avatar",
     "image_lipsync": "generate_image_lipsync",
     "video_lipsync": "generate_video_lipsync",
+    "agent_video": "generate_agent_video",
+    "translate": "translate_video",
 }
 
 
@@ -135,6 +181,24 @@ def available_video_lipsync_apis():
     """Return the tuple of supported video lip-sync provider identifiers."""
 
     return _VIDEO_LIPSYNC_APIS
+
+
+def available_agent_video_apis():
+    """Return the tuple of supported Video Agent provider identifiers."""
+
+    return _AGENT_VIDEO_APIS
+
+
+def available_translate_apis():
+    """Return the tuple of supported video translation provider identifiers."""
+
+    return _TRANSLATE_APIS
+
+
+def available_video_resource_apis():
+    """Return the tuple of supported video resource-management providers."""
+
+    return _VIDEO_RESOURCE_APIS
 
 
 def _operation_names():
@@ -352,6 +416,189 @@ def video_lipsync(video=None, audio=None, text=None, model=None, *, api, **kwarg
         return _video_failure(exc, api=api, operation="video_lipsync", model=model)
 
 
+def agent_video(prompt, model=None, *, api, **kwargs):
+    """Generate or revise a prompt-driven video through a provider agent."""
+
+    try:
+        module = _load_module("agent_video", api)
+        function = getattr(module, _OPERATION_FUNCTIONS["agent_video"])
+        return function(prompt, **_arguments_with_model(model, kwargs))
+    except Exception as exc:
+        return _video_failure(exc, api=api, operation="agent_video", model=model)
+
+
+def translate(video=None, output_languages=None, model=None, *, api, **kwargs):
+    """Translate, dub, or localize a source video."""
+
+    try:
+        module = _load_module("translate", api)
+        function = getattr(module, _OPERATION_FUNCTIONS["translate"])
+        arguments = _arguments_with_model(model, kwargs)
+        _apply_media_argument(arguments, video, "video_path", "video_url", "video")
+        if output_languages is not None:
+            arguments["output_languages"] = output_languages
+        return function(**arguments)
+    except Exception as exc:
+        return _video_failure(exc, api=api, operation="translate", model=model)
+
+
+def _load_resource(api):
+    if not isinstance(api, str) or not api:
+        raise ValueError(
+            "video resource operations require the keyword argument 'api'. "
+            f"Available APIs: {', '.join(_VIDEO_RESOURCE_APIS)}."
+        )
+    if api not in _VIDEO_RESOURCE_APIS:
+        raise ValueError(
+            f"Unknown video resource API '{api}'. Available APIs: "
+            f"{', '.join(_VIDEO_RESOURCE_APIS)}."
+        )
+    return importlib.import_module(f"._resources._apis.{api}", __name__)
+
+
+def _resource_call(api, operation, *args, **kwargs):
+    try:
+        return getattr(_load_resource(api), operation)(*args, **kwargs)
+    except Exception as exc:
+        return _video_failure(exc, api=api, operation=operation, model=None)
+
+
+def list_videos(*, api, **kwargs):
+    return _resource_call(api, "list_videos", **kwargs)
+
+
+def get_video(video_id, *, api, **kwargs):
+    return _resource_call(api, "get_video", video_id, **kwargs)
+
+
+def delete_video(video_id, *, api, confirm=False, **kwargs):
+    return _resource_call(api, "delete_video", video_id, confirm=confirm, **kwargs)
+
+
+def list_lipsyncs(*, api, **kwargs):
+    return _resource_call(api, "list_lipsyncs", **kwargs)
+
+
+def get_lipsync(lipsync_id, *, api, **kwargs):
+    return _resource_call(api, "get_lipsync", lipsync_id, **kwargs)
+
+
+def update_lipsync(lipsync_id, *, api, **kwargs):
+    return _resource_call(api, "update_lipsync", lipsync_id, **kwargs)
+
+
+def delete_lipsync(lipsync_id, *, api, confirm=False, **kwargs):
+    return _resource_call(api, "delete_lipsync", lipsync_id, confirm=confirm, **kwargs)
+
+
+def list_translations(*, api, **kwargs):
+    return _resource_call(api, "list_translations", **kwargs)
+
+
+def get_translation(video_translation_id, *, api, **kwargs):
+    return _resource_call(api, "get_translation", video_translation_id, **kwargs)
+
+
+def update_translation(video_translation_id, *, api, **kwargs):
+    return _resource_call(api, "update_translation", video_translation_id, **kwargs)
+
+
+def delete_translation(video_translation_id, *, api, confirm=False, **kwargs):
+    return _resource_call(api, "delete_translation", video_translation_id, confirm=confirm, **kwargs)
+
+
+def get_translation_caption(video_translation_id, *, api, **kwargs):
+    return _resource_call(api, "get_translation_caption", video_translation_id, **kwargs)
+
+
+def list_translation_languages(*, api, **kwargs):
+    return _resource_call(api, "list_translation_languages", **kwargs)
+
+
+def create_proofread(video=None, output_languages=None, title=None, *, api, **kwargs):
+    return _resource_call(api, "create_proofread", video=video, output_languages=output_languages, title=title, **kwargs)
+
+
+def get_proofread(proofread_id, *, api, **kwargs):
+    return _resource_call(api, "get_proofread", proofread_id, **kwargs)
+
+
+def generate_proofread(proofread_id, *, api, **kwargs):
+    return _resource_call(api, "generate_proofread", proofread_id, **kwargs)
+
+
+def get_proofread_srt(proofread_id, *, api, **kwargs):
+    return _resource_call(api, "get_proofread_srt", proofread_id, **kwargs)
+
+
+def update_proofread_srt(proofread_id, srt=None, *, api, **kwargs):
+    return _resource_call(api, "update_proofread_srt", proofread_id, srt=srt, **kwargs)
+
+
+def list_avatars(*, api, **kwargs):
+    return _resource_call(api, "list_avatars", **kwargs)
+
+
+def get_avatar(group_id, *, api, **kwargs):
+    return _resource_call(api, "get_avatar", group_id, **kwargs)
+
+
+def delete_avatar(group_id, *, api, confirm=False, **kwargs):
+    return _resource_call(api, "delete_avatar", group_id, confirm=confirm, **kwargs)
+
+
+def create_avatar_consent(group_id, *, api, **kwargs):
+    return _resource_call(api, "create_avatar_consent", group_id, **kwargs)
+
+
+def list_avatar_looks(*, api, **kwargs):
+    return _resource_call(api, "list_avatar_looks", **kwargs)
+
+
+def get_avatar_look(look_id, *, api, **kwargs):
+    return _resource_call(api, "get_avatar_look", look_id, **kwargs)
+
+
+def update_avatar_look(look_id, *, api, **kwargs):
+    return _resource_call(api, "update_avatar_look", look_id, **kwargs)
+
+
+def delete_avatar_look(look_id, *, api, confirm=False, **kwargs):
+    return _resource_call(api, "delete_avatar_look", look_id, confirm=confirm, **kwargs)
+
+
+def list_brand_kits(*, api, **kwargs):
+    return _resource_call(api, "list_brand_kits", **kwargs)
+
+
+def list_agent_sessions(*, api, **kwargs):
+    return _resource_call(api, "list_agent_sessions", **kwargs)
+
+
+def get_agent_session(session_id, *, api, **kwargs):
+    return _resource_call(api, "get_agent_session", session_id, **kwargs)
+
+
+def send_agent_message(session_id, message, *, api, **kwargs):
+    return _resource_call(api, "send_agent_message", session_id, message, **kwargs)
+
+
+def stop_agent_session(session_id, *, api, **kwargs):
+    return _resource_call(api, "stop_agent_session", session_id, **kwargs)
+
+
+def list_agent_styles(*, api, **kwargs):
+    return _resource_call(api, "list_agent_styles", **kwargs)
+
+
+def get_agent_resource(session_id, resource_id, *, api, **kwargs):
+    return _resource_call(api, "get_agent_resource", session_id, resource_id, **kwargs)
+
+
+def list_agent_videos(session_id, *, api, **kwargs):
+    return _resource_call(api, "list_agent_videos", session_id, **kwargs)
+
+
 def get_status(operation, request_id, model=None, *, api, **kwargs):
     """Fetch provider status for an async video generation request."""
 
@@ -432,8 +679,10 @@ def _video_failure(exc, *, api, operation, model, output_path=None):
             "video_url": None,
             "output_path": output_path,
             "cost_usd": 0.0,
+            "cost_currency": "USD",
             "cost_is_estimated": True,
             "cost_source": "unavailable",
+            "cost_details": {},
             "raw_response": {},
             "warnings": message,
         },

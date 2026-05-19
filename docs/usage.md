@@ -7,7 +7,7 @@ by applications.
 ## Imports
 
 ```python
-from easy_ai_clients import audio, image, text, video
+from easy_ai_clients import account, audio, image, media, text, video, webhooks
 ```
 
 Direct submodule imports are also supported:
@@ -27,11 +27,12 @@ Every operation requires `api=`. Use the discovery helpers to inspect supported
 provider identifiers:
 
 ```python
-from easy_ai_clients import audio, image, text, video
+from easy_ai_clients import account, audio, image, media, text, video, webhooks
 
 text.available_apis()
 audio.available_synthesize_apis()
 audio.available_transcribe_apis()
+audio.available_voice_apis()
 image.available_generate_apis()
 image.available_edit_apis()
 image.available_remix_apis()
@@ -45,6 +46,12 @@ video.available_video_with_audio_apis()
 video.available_create_avatar_apis()
 video.available_image_lipsync_apis()
 video.available_video_lipsync_apis()
+video.available_agent_video_apis()
+video.available_translate_apis()
+video.available_video_resource_apis()
+media.available_apis()
+webhooks.available_apis()
+account.available_apis()
 ```
 
 ## Text Generation
@@ -112,6 +119,43 @@ Return keys:
 
 Some synthesis providers use alignment calls to recover word timings. Configure
 the credentials documented for the selected provider path.
+
+## Voice Helpers
+
+Use voice helpers to inspect provider voice catalogs or create account-specific
+voices before calling speech or avatar workflows.
+
+```python
+from easy_ai_clients import audio
+
+voices = audio.list_voices(api="heygen", engine="starfish", limit=5)
+voice_id = voices["data"]["voices"][0]["voice_id"]
+
+details = audio.get_voice(voice_id, api="heygen")
+
+designed = audio.design_voice(
+    "Warm, clear product narrator.",
+    api="elevenlabs",
+)
+
+cloned = audio.clone_voice(
+    audio_input="speaker-sample.wav",
+    voice_name="Launch Narrator",
+    api="elevenlabs",
+)
+```
+
+Return keys:
+
+- `provider`
+- `operation` when the adapter exposes it
+- `data`
+- `raw_response`
+- optional `warnings` and `error` for unsupported helper operations
+
+Providers that only expose a catalog, such as DeepInfra, Mistral, and Together,
+return a normalized `unsupported_operation` result for `design_voice` and
+`clone_voice`.
 
 ## Speech Transcription
 
@@ -252,11 +296,17 @@ remixed = image.remix(
 Return keys for these operations:
 
 - `cust_usd`
+- `cost_usd`
+- `cost_currency`
+- `cost_is_estimated`
+- `cost_source`
+- `cost_details`
 - `base64`
 - `warnings`
 - `request_id`
 
-The cost key is currently spelled `cust_usd` for this public contract.
+The legacy `cust_usd` key is preserved as an alias. New integrations should
+prefer the standardized `cost_usd` metadata.
 
 Image inputs can be local paths, public `http` / `https` URLs, raw base64 image
 strings, or base64 data URLs. For `image.edit`, the public mask convention is
@@ -280,6 +330,10 @@ Return keys:
 
 - `request_id`
 - `cost_usd`
+- `cost_currency`
+- `cost_is_estimated`
+- `cost_source`
+- `cost_details`
 - `input_text`
 - `output`
 
@@ -336,6 +390,19 @@ talking_avatar = video.image_lipsync(
     audio="voice.wav",
     api="falai",
 )
+
+agent = video.agent_video(
+    "Create a concise onboarding video.",
+    api="heygen",
+    sync=False,
+)
+
+translated = video.translate(
+    video="speaker.mp4",
+    output_languages=["Portuguese"],
+    api="heygen",
+    sync=False,
+)
 ```
 
 Common return keys include:
@@ -355,6 +422,60 @@ Supported video media inputs are local paths, public `http` / `https` URLs, and
 data URLs. When `sync=False`, the dispatcher returns submitted queue/task
 metadata; pass the same operation name to `video.get_status`,
 `video.get_result`, or `video.download`.
+
+## HeyGen Video Resources
+
+HeyGen v3 exposes resource helpers for existing videos, lip-syncs,
+translations, proofreads, avatars, avatar looks, brand kits, and Video Agent
+sessions.
+
+```python
+from easy_ai_clients import video
+
+videos = video.list_videos(api="heygen", limit=10)
+languages = video.list_translation_languages(api="heygen")
+
+proofread = video.create_proofread(
+    video="speaker.mp4",
+    output_languages=["Portuguese"],
+    title="Portuguese review",
+    api="heygen",
+)
+
+video.generate_proofread(proofread["data"]["id"], api="heygen")
+```
+
+Delete helpers such as `video.delete_video(..., api="heygen")` and
+`video.delete_avatar_look(..., api="heygen")` require `confirm=True`.
+
+## Media, Webhooks, and Account
+
+The helper modules currently expose HeyGen v3 workflows and are structured for
+future providers.
+
+```python
+from easy_ai_clients import account, media, webhooks
+
+me = account.get_current_user(api="heygen")
+print(me["data"])
+
+asset = media.upload_asset("intro.mp4", api="heygen")
+asset_id = asset["data"]["asset_id"]
+
+endpoint = webhooks.create_endpoint(
+    "https://example.com/heygen/webhook",
+    api="heygen",
+    event_types=["video.completed", "video.failed"],
+)
+
+webhooks.rotate_secret(endpoint["data"]["id"], api="heygen")
+events = webhooks.list_events(api="heygen", limit=20)
+
+media.delete_asset(asset_id, api="heygen", confirm=True)
+```
+
+These helpers return `provider`, `data`, and `raw_response`. Destructive delete
+helpers require explicit `confirm=True`.
 
 ## Provider-Native Kwargs
 
@@ -407,3 +528,10 @@ Cost helpers raise `NotImplementedError` when the selected provider does not
 support post-hoc cost lookup. Documented pricing metadata is used when known;
 unknown model or request costs are reported as `0.0` with
 `cost_source="unavailable"` and a warning or lookup-error reason.
+
+## More Documentation
+
+- [Provider matrix](providers.md)
+- [Operation examples](operation_examples.md)
+- [Configuration](configuration.md)
+- [Error handling](errors.md)

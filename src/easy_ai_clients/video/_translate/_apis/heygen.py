@@ -1,0 +1,96 @@
+"""HeyGen v3 video translation adapter."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from .... import _heygen
+from ..._heygen_common import (
+    TRANSLATE_MODEL,
+    build_video_result,
+    cost_metadata,
+    media_union,
+    passthrough_payload,
+)
+
+
+def translate_video(video=None, output_languages=None, output_path=None, sync=True, **kwargs: Any):
+    languages = output_languages if output_languages is not None else kwargs.pop("output_languages", None)
+    if isinstance(languages, str):
+        languages = [languages]
+    payload = passthrough_payload(
+        {
+            "video": media_union(
+                kwargs.pop("video_path", None) or video,
+                kwargs.pop("video_url", None),
+                kwargs.pop("video_asset_id", None),
+                field_name="video",
+            ),
+            "output_languages": languages,
+        },
+        kwargs,
+    )
+    if not payload.get("video"):
+        raise ValueError("video is required.")
+    if not payload.get("output_languages"):
+        raise ValueError("output_languages is required.")
+    raw = _heygen.request_json(
+        "POST",
+        "/v3/video-translations",
+        payload=payload,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+    )
+    ids = []
+    item = _heygen.data(raw)
+    if isinstance(item, dict) and isinstance(item.get("video_translation_ids"), list):
+        ids = [str(value) for value in item["video_translation_ids"]]
+    request_id = ids[0] if ids else _heygen.response_id(raw, "video_translation_id", "id")
+    final_raw = raw
+    if sync and request_id:
+        final_raw = _heygen.wait_for_result(
+            lambda: get_translation(request_id, timeout_seconds=60),
+            timeout_seconds=kwargs.get("timeout_seconds"),
+            poll_interval_seconds=kwargs.get("poll_interval_seconds"),
+        )
+    return build_video_result(
+        model=kwargs.get("model") or TRANSLATE_MODEL,
+        raw_response=final_raw,
+        request_id=request_id,
+        output_path=output_path,
+        cost=cost_metadata(kwargs),
+        extra={"video_translation_ids": ids} if ids else None,
+    )
+
+
+def get_translation(video_translation_id, *, timeout_seconds=None, **kwargs):
+    return _heygen.request_json(
+        "GET",
+        f"/v3/video-translations/{_heygen.quote_path(video_translation_id)}",
+        params=kwargs,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def get_generation_status(request_id, **kwargs):
+    return get_translation(request_id, **kwargs)
+
+
+def get_generation_result(request_id, output_path=None, **kwargs):
+    raw = get_translation(request_id, timeout_seconds=kwargs.get("timeout_seconds"))
+    return build_video_result(
+        model=kwargs.get("model") or TRANSLATE_MODEL,
+        raw_response=raw,
+        request_id=request_id,
+        output_path=output_path,
+        cost=cost_metadata(kwargs),
+    )
+
+
+def download_generation(request_id=None, video_url=None, output_path=None, **kwargs):
+    if video_url:
+        from ..._shared import download_file, normalize_output_path
+
+        return download_file(video_url, normalize_output_path(output_path))
+    if not request_id:
+        raise ValueError("request_id or video_url is required.")
+    return get_generation_result(request_id, output_path=output_path, **kwargs)

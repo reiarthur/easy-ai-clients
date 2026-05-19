@@ -1744,6 +1744,8 @@ def _build_transcription_bundle(
     cost_source="unavailable",
     cost_is_estimated=False,
     cost_lookup_error=None,
+    cost_currency="USD",
+    cost_details=None,
 ):
     """Builds the final flattened transcription bundle from the raw payload."""
     payload = _ensure_payload(transcription_payload)
@@ -1791,8 +1793,10 @@ def _build_transcription_bundle(
         }
     )
     bundle_payload["cost_usd"] = _normalize_cost_usd(cost_usd)
+    bundle_payload["cost_currency"] = _clean_text(cost_currency) or "USD"
     bundle_payload["cost_source"] = _normalize_cost_source(cost_source)
     bundle_payload["cost_is_estimated"] = bool(cost_is_estimated)
+    bundle_payload["cost_details"] = dict(cost_details or {})
     bundle_payload["cost_lookup_error"] = _sanitize_cost_lookup_error(cost_lookup_error)
 
     markdown_payload = _build_markdown_payload(metadata, segment_records, language_mkd)

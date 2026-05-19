@@ -159,6 +159,10 @@ def _finalize_synthesis_output(
 
     return {
         "cost_usd": _coerce_cost_usd(cost_usd),
+        "cost_currency": "USD",
+        "cost_source": "official_pricing_table" if _coerce_cost_usd(cost_usd) else "unavailable",
+        "cost_is_estimated": True,
+        "cost_details": {},
         "audio": final_audio,
         "words": _format_public_word_timestamps(projected_words),
     }

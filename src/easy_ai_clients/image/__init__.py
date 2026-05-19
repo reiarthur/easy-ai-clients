@@ -30,11 +30,14 @@ __all__ = [
 
 _GENERATE_APIS = (
     "bfl",
+    "deepinfra",
     "falai",
     "fireworks",
     "google",
+    "huggingface",
     "openai",
     "openrouter",
+    "runway",
     "stability",
     "together",
     "xai",
@@ -46,10 +49,13 @@ _REMIX_APIS = _GENERATE_APIS
 
 _ANALYZE_APIS = (
     "anthropic",
+    "deepinfra",
     "falai",
     "fireworks",
     "google",
     "groq",
+    "huggingface",
+    "mistral",
     "openai",
     "openrouter",
     "together",
@@ -157,6 +163,10 @@ def analyze(prompt, image, model=None, *, api, **kwargs):
             {
                 "request_id": "",
                 "cost_usd": 0.0,
+                "cost_currency": "USD",
+                "cost_is_estimated": False,
+                "cost_source": "unavailable",
+                "cost_details": {},
                 "input_text": prompt.strip() if isinstance(prompt, str) else "",
                 "output": message,
                 "warnings": message,
@@ -173,6 +183,11 @@ def _image_failure(exc, *, api, operation, model):
     return attach_error(
         {
             "cust_usd": 0.0,
+            "cost_usd": 0.0,
+            "cost_currency": "USD",
+            "cost_is_estimated": False,
+            "cost_source": "unavailable",
+            "cost_details": {},
             "base64": "",
             "warnings": message,
             "request_id": "",

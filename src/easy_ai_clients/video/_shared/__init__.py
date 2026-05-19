@@ -158,12 +158,16 @@ def normalize_result(provider, model, status=None, request_id=None, video_url=No
         "video_url": video_url,
         "output_path": output_path,
         "cost_usd": float(cost_usd),
+        "cost_currency": "USD",
         "cost_is_estimated": bool(cost_is_estimated),
         "cost_source": cost_source,
+        "cost_details": {},
         "raw_response": raw_response or {},
     }
     if extra:
         result.update(dict(extra))
+        result.setdefault("cost_currency", "USD")
+        result.setdefault("cost_details", {})
     if warnings:
         existing = str(result.get("warnings") or "").strip()
         joined = "; ".join([existing, *warnings] if existing else warnings)

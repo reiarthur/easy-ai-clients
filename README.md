@@ -34,7 +34,7 @@ Runtime dependencies are installed by `pip`: `requests`, `httpx`, `Pillow`,
 import base64
 
 from dotenv import load_dotenv
-from easy_ai_clients import audio, image, text, video
+from easy_ai_clients import account, audio, image, media, text, video, webhooks
 
 load_dotenv()
 
@@ -80,7 +80,7 @@ print(clip["video_url"], "USD:", clip["cost_usd"])
 Import the public dispatchers from the top-level package:
 
 ```python
-from easy_ai_clients import audio, image, text, video
+from easy_ai_clients import account, audio, image, media, text, video, webhooks
 ```
 
 or from each submodule:
@@ -98,27 +98,33 @@ Supported operations:
 | Module | Function | Purpose | Providers |
 | --- | --- | --- | --- |
 | `text` | `generate` | Text-in / text-out generation | `anthropic`, `cohere`, `deepinfra`, `deepseek`, `falai`, `fireworks`, `google`, `groq`, `huggingface`, `mistral`, `openai`, `openrouter`, `together`, `xai` |
-| `text` | `list_models` | Provider model catalog helper where implemented | `falai`, `openai`, `openrouter` |
+| `text` | `list_models` | Provider model catalog helper where implemented | current text providers with catalog support |
 | `text` | `update_cost` | Post-hoc cost refresh where implemented | `openai`, `openrouter` |
-| `audio` | `generate` | Text-to-speech synthesis | `deepinfra`, `elevenlabs`, `google`, `mistral`, `openai`, `together`, `xai` |
+| `audio` | `generate` | Speech, music, and sound synthesis | `deepgram`, `deepinfra`, `elevenlabs`, `google`, `groq`, `heygen`, `mistral`, `openai`, `openrouter`, `runway`, `stability`, `together`, `xai` |
+| `audio` | `list_voices`, `get_voice`, `design_voice`, `clone_voice` | Voice catalog, design, and cloning helpers | `deepinfra`, `elevenlabs`, `heygen`, `mistral`, `together` |
 | `audio` | `prepare_transcription_audio` | Reusable speech-to-text upload preparation | common transcription preprocessing |
-| `audio` | `transcribe` | Speech-to-text transcription | `deepgram`, `elevenlabs`, `falai`, `fireworks`, `speechmatics`, `together` |
+| `audio` | `transcribe` | Speech-to-text transcription | `deepinfra`, `deepgram`, `elevenlabs`, `falai`, `fireworks`, `google`, `groq`, `huggingface`, `mistral`, `openai`, `openrouter`, `speechmatics`, `together`, `xai` |
 | `audio` | `update_cost` | Post-hoc transcription cost refresh where implemented | `deepgram` |
-| `image` | `generate` | Text-to-image generation | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
-| `image` | `edit` | Prompt-guided image editing | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
-| `image` | `remix` | Reference-image guided generation | `bfl`, `falai`, `fireworks`, `google`, `openai`, `openrouter`, `stability`, `together`, `xai` |
-| `image` | `analyze` | Vision and multimodal analysis | `anthropic`, `falai`, `fireworks`, `google`, `groq`, `openai`, `openrouter`, `together`, `xai` |
+| `image` | `generate` | Text-to-image generation | `bfl`, `deepinfra`, `falai`, `fireworks`, `google`, `huggingface`, `openai`, `openrouter`, `runway`, `stability`, `together`, `xai` |
+| `image` | `edit` | Prompt-guided image editing | `bfl`, `deepinfra`, `falai`, `fireworks`, `google`, `huggingface`, `openai`, `openrouter`, `runway`, `stability`, `together`, `xai` |
+| `image` | `remix` | Reference-image guided generation | `bfl`, `deepinfra`, `falai`, `fireworks`, `google`, `huggingface`, `openai`, `openrouter`, `runway`, `stability`, `together`, `xai` |
+| `image` | `analyze` | Vision and multimodal analysis | `anthropic`, `deepinfra`, `falai`, `fireworks`, `google`, `groq`, `huggingface`, `mistral`, `openai`, `openrouter`, `together`, `xai` |
 | `image` | `update_cost` | Post-hoc cost refresh where implemented | `openrouter` |
-| `video` | `generate` / `text_to_video` | Prompt-only video generation | `falai`, `google`, `hedra`, `runway` |
-| `video` | `image_to_video` | Prompt + image video generation | `falai`, `google`, `hedra`, `runway` |
-| `video` | `video_to_video` | Source-video guided generation/editing | `falai`, `google`, `hedra`, `runway` |
+| `video` | `generate` / `text_to_video` | Prompt-only video generation | `falai`, `google`, `hedra`, `heygen`, `huggingface`, `runway`, `together`, `xai` |
+| `video` | `image_to_video` | Prompt + image video generation | `falai`, `google`, `hedra`, `heygen`, `runway`, `together`, `xai` |
+| `video` | `video_to_video` | Source-video guided generation/editing | `falai`, `google`, `hedra`, `runway`, `together`, `xai` |
 | `video` | `motion_control` | Character or motion-reference video generation | `falai`, `hedra`, `runway` |
-| `video` | `avatar_video` | Avatar or talking-video generation from speech | `falai`, `hedra`, `runway` |
-| `video` | `video_with_audio` | Generate/add audio for a source video | `hedra` |
-| `video` | `create_avatar` | Create a provider avatar/persona | `runway` |
-| `video` | `image_lipsync` | Image/avatar + audio lip-sync video | `falai` |
-| `video` | `video_lipsync` | Source-video + audio lip-sync video | `falai` |
+| `video` | `avatar_video` | Avatar or talking-video generation from speech | `falai`, `hedra`, `heygen`, `runway` |
+| `video` | `video_with_audio` | Generate/add audio for a source video | `hedra`, `runway`, `together` |
+| `video` | `create_avatar` | Create a provider avatar/persona | `heygen`, `runway` |
+| `video` | `image_lipsync` | Image/avatar + audio lip-sync video | `falai`, `heygen` |
+| `video` | `video_lipsync` | Source-video + audio lip-sync video | `falai`, `heygen` |
+| `video` | `agent_video`, `translate` | Video Agent and video translation workflows | `heygen` |
+| `video` | resource helpers | Videos, lipsyncs, translations, proofreads, avatars, looks, brand kits, and agent sessions | `heygen` |
 | `video` | `get_status`, `get_result`, `download` | Async request helpers for video operations | matching operation provider |
+| `media` | `upload_asset`, `delete_asset` | Provider asset upload and deletion | `heygen` |
+| `webhooks` | endpoint and event helpers | Provider webhook endpoint management | `heygen` |
+| `account` | `get_current_user` | Account and balance lookup | `heygen` |
 
 See the
 [provider matrix](https://github.com/reiarthur/easy-ai-clients/blob/main/docs/providers.md)
@@ -130,11 +136,12 @@ Every dispatcher requires `api=`. The value must match a supported provider
 identifier for that operation.
 
 ```python
-from easy_ai_clients import audio, image, text, video
+from easy_ai_clients import account, audio, image, media, text, video, webhooks
 
 print(text.available_apis())
 print(audio.available_synthesize_apis())
 print(audio.available_transcribe_apis())
+print(audio.available_voice_apis())
 print(image.available_generate_apis())
 print(image.available_edit_apis())
 print(image.available_remix_apis())
@@ -148,6 +155,12 @@ print(video.available_video_with_audio_apis())
 print(video.available_create_avatar_apis())
 print(video.available_image_lipsync_apis())
 print(video.available_video_lipsync_apis())
+print(video.available_agent_video_apis())
+print(video.available_translate_apis())
+print(video.available_video_resource_apis())
+print(media.available_apis())
+print(webhooks.available_apis())
+print(account.available_apis())
 ```
 
 Provider modules under private `_apis` packages are implementation details.
@@ -221,6 +234,12 @@ speech = audio.generate(
     api="openai",
 )
 speech["audio"].export("narration.mp3", format="mp3")
+
+voices = audio.list_voices(api="elevenlabs")
+designed = audio.design_voice(
+    "Warm, calm product narrator.",
+    api="elevenlabs",
+)
 
 bundle = audio.transcribe("narration.mp3", api="deepgram")
 print(bundle["text"])
@@ -366,6 +385,14 @@ submitted = video.motion_control(
     sync=False,
 )
 status = video.get_status("motion_control", submitted["request_id"], api="falai")
+
+agent = video.agent_video("Create a concise onboarding video.", api="heygen", sync=False)
+translated = video.translate(
+    video="speaker.mp4",
+    output_languages=["Portuguese"],
+    api="heygen",
+    sync=False,
+)
 ```
 
 Video media inputs accept local file paths, public `http` / `https` URLs, or
@@ -373,19 +400,40 @@ data URLs. `sync=False` returns provider request IDs and queue/task metadata;
 use `video.get_status`, `video.get_result`, or `video.download` with the same
 operation and provider.
 
+### Helper Modules
+
+```python
+from easy_ai_clients import account, media, webhooks
+
+me = account.get_current_user(api="heygen")
+asset = media.upload_asset("intro.mp4", api="heygen")
+
+endpoint = webhooks.create_endpoint(
+    "https://example.com/heygen/webhook",
+    api="heygen",
+    event_types=["video.completed"],
+)
+
+media.delete_asset(asset["data"]["asset_id"], api="heygen", confirm=True)
+```
+
+HeyGen delete helpers require `confirm=True` so cleanup stays explicit.
+
 ## Return Contracts
 
 | Operation | Normalized result |
 | --- | --- |
 | `text.generate(...)` | `request_id`, `cost_source`, `cost_usd`, `input_text`, optional `instruction`, `output_text`; failures add `error` and usually `warnings` |
 | `audio.generate(...)` | `cost_usd`, `audio` as `pydub.AudioSegment`, `words`; failures use `audio=None`, `words={}`, and add `error` |
+| `audio.list_voices(...)`, `audio.get_voice(...)`, `audio.design_voice(...)`, `audio.clone_voice(...)` | `provider`, optional `operation`, `data`, `raw_response`; unsupported helper operations add `warnings` and `error.type="unsupported_operation"` |
 | `audio.transcribe(...)` | `text`, optional `words` / `segments` / `silences`, speaker metadata, `provider_metadata`, `request_id`, `cost_usd`, `cost_source`, `cost_is_estimated`, `cost_lookup_error`, optional `mkd`; failures add `error` |
-| `image.generate(...)`, `image.edit(...)`, `image.remix(...)` | `cust_usd`, `base64`, `warnings`, `request_id`; failures use `base64=""` and add `error` |
-| `image.analyze(...)` | `request_id`, `cost_usd`, `input_text`, `output`; failures add `error` |
+| `image.generate(...)`, `image.edit(...)`, `image.remix(...)` | `cust_usd`, `cost_usd`, `cost_currency`, `cost_is_estimated`, `cost_source`, `cost_details`, `base64`, `warnings`, `request_id`; failures use `base64=""` and add `error` |
+| `image.analyze(...)` | `request_id`, `cost_usd`, `cost_currency`, `cost_is_estimated`, `cost_source`, `cost_details`, `input_text`, `output`; failures add `error` |
 | `video.generate(...)`, `video.text_to_video(...)`, `video.image_to_video(...)`, `video.video_to_video(...)`, `video.motion_control(...)`, `video.avatar_video(...)`, `video.video_with_audio(...)`, `video.create_avatar(...)`, `video.image_lipsync(...)`, `video.video_lipsync(...)` | `provider`, `model`, `status`, `request_id`, `video_url`, `output_path`, `cost_usd`, `cost_is_estimated`, `cost_source`, `raw_response`; failures use `status="failed"` and add `error` |
+| `video` resource helpers, `media`, `webhooks`, `account` | `provider`, `data`, `raw_response`; destructive delete helpers require `confirm=True` |
 
-The image generation/edit/remix cost key is intentionally `cust_usd` for the
-current public contract.
+The legacy image generation/edit/remix cost key `cust_usd` is preserved as an
+alias while new code can use the standardized `cost_usd` metadata.
 
 ## Provider Parameters
 
@@ -480,6 +528,7 @@ for more detail.
 - [Configuration](https://github.com/reiarthur/easy-ai-clients/blob/main/docs/configuration.md)
 - [Usage patterns](https://github.com/reiarthur/easy-ai-clients/blob/main/docs/usage.md)
 - [Provider matrix](https://github.com/reiarthur/easy-ai-clients/blob/main/docs/providers.md)
+- [Operation examples](https://github.com/reiarthur/easy-ai-clients/blob/main/docs/operation_examples.md)
 - [Error handling](https://github.com/reiarthur/easy-ai-clients/blob/main/docs/errors.md)
 - [Full docs directory](https://github.com/reiarthur/easy-ai-clients/tree/main/docs)
 - [Changelog](https://github.com/reiarthur/easy-ai-clients/blob/main/CHANGELOG.md)

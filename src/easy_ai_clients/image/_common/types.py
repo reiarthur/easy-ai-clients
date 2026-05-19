@@ -15,6 +15,11 @@ class ImageOperationResult(TypedDict):
     """Public contract for generate, edit and remix operations."""
 
     cust_usd: float
+    cost_usd: float
+    cost_currency: str
+    cost_is_estimated: bool
+    cost_source: str
+    cost_details: dict[str, Any]
     base64: str
     warnings: str
     request_id: str
@@ -25,6 +30,10 @@ class AnalyzeOperationResult(TypedDict):
 
     request_id: str
     cost_usd: float
+    cost_currency: str
+    cost_is_estimated: bool
+    cost_source: str
+    cost_details: dict[str, Any]
     input_text: str
     output: str
 

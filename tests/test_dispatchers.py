@@ -249,12 +249,20 @@ def test_removed_revai_transcription_identifier_returns_normalized_error():
     from easy_ai_clients import audio
 
     assert audio.available_transcribe_apis() == (
+        "deepinfra",
         "deepgram",
         "elevenlabs",
         "falai",
         "fireworks",
+        "google",
+        "groq",
+        "huggingface",
+        "mistral",
+        "openai",
+        "openrouter",
         "speechmatics",
         "together",
+        "xai",
     )
     result = audio.transcribe("audio.mp3", api="revai")
     assert result["text"] == ""
@@ -343,6 +351,46 @@ def test_image_analyze_attaches_error_for_provider_error_output(monkeypatch):
     assert result["output"] == "Provider error: HTTP 400 bad model"
     assert result["warnings"] == "Provider error: HTTP 400 bad model"
     assert result["error"]["model"] == "future-vision"
+
+
+def test_media_cost_metadata_contracts_are_present():
+    from easy_ai_clients.audio._transcribe.post_processing import (
+        _build_transcription_bundle,
+        build_raw_transcription_payload,
+    )
+    from easy_ai_clients.image._common.provider_utils import image_result
+    from easy_ai_clients.video._shared import normalize_result
+
+    image_payload = image_result(base64_value="abc", cust_usd=0.02, request_id="img")
+    assert image_payload["cust_usd"] == image_payload["cost_usd"]
+    assert image_payload["cost_currency"] == "USD"
+    assert isinstance(image_payload["cost_details"], dict)
+
+    raw_transcription = build_raw_transcription_payload(
+        provider="test",
+        model="stt",
+        audio_duration_seconds=1,
+        text="hello",
+    )
+    transcription = _build_transcription_bundle(
+        raw_transcription,
+        cost_usd=0.01,
+        cost_source="official_pricing_table",
+        cost_is_estimated=True,
+        cost_details={"unit": "minute"},
+        language_mkd=False,
+    )
+    assert transcription["cost_currency"] == "USD"
+    assert transcription["cost_details"] == {"unit": "minute"}
+
+    video_payload = normalize_result(
+        "test",
+        "model",
+        cost_usd=0.03,
+        cost_source="official_pricing_table",
+    )
+    assert video_payload["cost_currency"] == "USD"
+    assert isinstance(video_payload["cost_details"], dict)
 
 
 @pytest.mark.parametrize(
