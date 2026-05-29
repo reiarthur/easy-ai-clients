@@ -63,6 +63,11 @@ Validated values include `resolution` `480p` or `720p`, `num_segments` 1 to 10, 
 
 `sync=True` uses fal.ai queue submit, poll, response retrieval, and optional download. `sync=False` returns queue URLs and `request_id`. Use `video.get_status`, `video.get_result`, and `video.download` with operation `image_lipsync` for async follow-up work.
 
+When fal.ai returns queue URLs, the adapter preserves them and uses them for
+`sync=True` polling. Pass `status_url` back to `video.get_status(...)` and
+`response_url` back to `video.get_result(...)` when present. Calls that only
+provide `request_id`, `model`, and `api` continue to reconstruct queue URLs.
+
 ## Python Example
 
 ```python

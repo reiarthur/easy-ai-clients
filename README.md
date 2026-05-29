@@ -400,6 +400,42 @@ data URLs. `sync=False` returns provider request IDs and queue/task metadata;
 use `video.get_status`, `video.get_result`, or `video.download` with the same
 operation and provider.
 
+Async video results preserve safe provider references such as `status_url`,
+`response_url`, `result_url`, `task_url`, and `operation_url` when the provider
+returns them. Pass those values back to the helper calls when present; the older
+`request_id` + `model` + `api` flow remains supported as a fallback.
+
+```python
+from easy_ai_clients import video
+
+submitted = video.image_to_video(
+    "Slow cinematic camera push-in.",
+    "input.png",
+    api="falai",
+    model="fal-ai/ltx-2-19b/distilled/image-to-video",
+    sync=False,
+)
+
+status = video.get_status(
+    "image_to_video",
+    submitted["request_id"],
+    api="falai",
+    model=submitted["model"],
+    status_url=submitted.get("status_url"),
+)
+
+result = video.get_result(
+    "image_to_video",
+    submitted["request_id"],
+    api="falai",
+    model=submitted["model"],
+    response_url=submitted.get("response_url"),
+)
+```
+
+For direct `video.download(..., video_url=...)`, pass `output_path`; omitting it
+returns a normalized failure instead of silently returning `None`.
+
 ### Helper Modules
 
 ```python
@@ -429,7 +465,7 @@ HeyGen delete helpers require `confirm=True` so cleanup stays explicit.
 | `audio.transcribe(...)` | `text`, optional `words` / `segments` / `silences`, speaker metadata, `provider_metadata`, `request_id`, `cost_usd`, `cost_source`, `cost_is_estimated`, `cost_lookup_error`, optional `mkd`; failures add `error` |
 | `image.generate(...)`, `image.edit(...)`, `image.remix(...)` | `cust_usd`, `cost_usd`, `cost_currency`, `cost_is_estimated`, `cost_source`, `cost_details`, `base64`, `warnings`, `request_id`; failures use `base64=""` and add `error` |
 | `image.analyze(...)` | `request_id`, `cost_usd`, `cost_currency`, `cost_is_estimated`, `cost_source`, `cost_details`, `input_text`, `output`; failures add `error` |
-| `video.generate(...)`, `video.text_to_video(...)`, `video.image_to_video(...)`, `video.video_to_video(...)`, `video.motion_control(...)`, `video.avatar_video(...)`, `video.video_with_audio(...)`, `video.create_avatar(...)`, `video.image_lipsync(...)`, `video.video_lipsync(...)` | `provider`, `model`, `status`, `request_id`, `video_url`, `output_path`, `cost_usd`, `cost_is_estimated`, `cost_source`, `raw_response`; failures use `status="failed"` and add `error` |
+| `video.generate(...)`, `video.text_to_video(...)`, `video.image_to_video(...)`, `video.video_to_video(...)`, `video.motion_control(...)`, `video.avatar_video(...)`, `video.video_with_audio(...)`, `video.create_avatar(...)`, `video.image_lipsync(...)`, `video.video_lipsync(...)` | `provider`, `model`, `status`, `request_id`, `video_url`, `output_path`, `cost_usd`, `cost_is_estimated`, `cost_source`, `raw_response`, plus safe async refs such as `status_url`, `response_url`, `task_url`, or `operation_url` when available; failures use `status="failed"` and add `error` |
 | `video` resource helpers, `media`, `webhooks`, `account` | `provider`, `data`, `raw_response`; destructive delete helpers require `confirm=True` |
 
 The legacy image generation/edit/remix cost key `cust_usd` is preserved as an

@@ -85,6 +85,11 @@ the caller supplies an explicit billing quantity such as `duration_seconds`,
 
 fal.ai uses queue submission, status polling, and response retrieval. `sync=False` returns `request_id`, `status_url`, and `response_url`. Use `video.get_status`, `video.get_result`, and `video.download` with operation `text_to_video` for async follow-up work.
 
+When fal.ai returns queue URLs, the adapter preserves them and uses them for
+`sync=True` polling. Pass `status_url` back to `video.get_status(...)` and
+`response_url` back to `video.get_result(...)` when present. Calls that only
+provide `request_id`, `model`, and `api` continue to reconstruct queue URLs.
+
 Local files are converted to data URLs only in contexts that accept media. Text-to-video sends no media.
 
 ## Python Example

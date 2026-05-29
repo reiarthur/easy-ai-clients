@@ -12,6 +12,11 @@ from ..._heygen_common import (
     media_union,
     passthrough_payload,
 )
+from ..._shared import merge_async_refs, safe_provider_url
+
+
+def _translation_url(video_translation_id):
+    return _heygen.api_base_url() + f"/v3/video-translations/{_heygen.quote_path(video_translation_id)}"
 
 
 def translate_video(video=None, output_languages=None, output_path=None, sync=True, **kwargs: Any):
@@ -45,30 +50,48 @@ def translate_video(video=None, output_languages=None, output_path=None, sync=Tr
     if isinstance(item, dict) and isinstance(item.get("video_translation_ids"), list):
         ids = [str(value) for value in item["video_translation_ids"]]
     request_id = ids[0] if ids else _heygen.response_id(raw, "video_translation_id", "id")
+    refs = merge_async_refs(None, raw, task_url=_translation_url(request_id) if request_id else None)
     final_raw = raw
     if sync and request_id:
         final_raw = _heygen.wait_for_result(
-            lambda: get_translation(request_id, timeout_seconds=60),
+            lambda: get_translation(
+                request_id,
+                timeout_seconds=60,
+                status_url=refs.get("status_url"),
+                result_url=refs.get("result_url"),
+                task_url=refs.get("task_url"),
+                poll_url=refs.get("poll_url"),
+            ),
             timeout_seconds=kwargs.get("timeout_seconds"),
             poll_interval_seconds=kwargs.get("poll_interval_seconds"),
         )
+    raw_response = {"submission": raw, "result": final_raw} if sync and request_id else raw
     return build_video_result(
         model=kwargs.get("model") or TRANSLATE_MODEL,
-        raw_response=final_raw,
+        raw_response=raw_response,
         request_id=request_id,
         output_path=output_path,
         cost=cost_metadata(kwargs),
-        extra={"video_translation_ids": ids} if ids else None,
+        extra={**refs, **({"video_translation_ids": ids} if ids else {})},
     )
 
 
 def get_translation(video_translation_id, *, timeout_seconds=None, **kwargs):
-    return _heygen.request_json(
+    explicit_url = (
+        safe_provider_url(kwargs.pop("status_url", None))
+        or safe_provider_url(kwargs.pop("result_url", None))
+        or safe_provider_url(kwargs.pop("task_url", None))
+        or safe_provider_url(kwargs.pop("poll_url", None))
+    )
+    url = explicit_url or _translation_url(video_translation_id)
+    raw = _heygen.request_json(
         "GET",
-        f"/v3/video-translations/{_heygen.quote_path(video_translation_id)}",
+        url,
         params=kwargs,
         timeout_seconds=timeout_seconds,
     )
+    raw.update(merge_async_refs(None, raw, task_url=url))
+    return raw
 
 
 def get_generation_status(request_id, **kwargs):
@@ -76,7 +99,14 @@ def get_generation_status(request_id, **kwargs):
 
 
 def get_generation_result(request_id, output_path=None, **kwargs):
-    raw = get_translation(request_id, timeout_seconds=kwargs.get("timeout_seconds"))
+    raw = get_translation(
+        request_id,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        status_url=kwargs.get("status_url"),
+        result_url=kwargs.get("result_url"),
+        task_url=kwargs.get("task_url"),
+        poll_url=kwargs.get("poll_url"),
+    )
     return build_video_result(
         model=kwargs.get("model") or TRANSLATE_MODEL,
         raw_response=raw,

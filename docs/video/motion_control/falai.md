@@ -74,6 +74,11 @@ Cost is estimated only when the documented billing unit can be calculated.
 
 The wrapper uses `video_path` or `video_url` as the motion reference for this fal.ai model. `reference_path` and `reference_url` are rejected for this provider to avoid ambiguous mapping.
 
+When fal.ai returns queue URLs, the adapter preserves them and uses them for
+`sync=True` polling. Pass `status_url` back to `video.get_status(...)` and
+`response_url` back to `video.get_result(...)` when present. Calls that only
+provide `request_id`, `model`, and `api` continue to reconstruct queue URLs.
+
 ## Python Example
 
 ```python

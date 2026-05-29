@@ -417,11 +417,52 @@ Common return keys include:
 - `cost_is_estimated`
 - `cost_source`
 - `raw_response`
+- safe provider async refs such as `status_url`, `response_url`, `result_url`,
+  `task_url`, or `operation_url` when available
 
 Supported video media inputs are local paths, public `http` / `https` URLs, and
 data URLs. When `sync=False`, the dispatcher returns submitted queue/task
 metadata; pass the same operation name to `video.get_status`,
 `video.get_result`, or `video.download`.
+
+Provider-returned async references are preserved for all async video operations
+that expose them. Pass these refs back to helper calls when present; calls that
+only provide `request_id`, `model`, and `api` continue to use the provider's
+fallback URL construction.
+
+```python
+from easy_ai_clients import video
+
+submitted = video.image_to_video(
+    "Slow cinematic camera push-in.",
+    "input.png",
+    api="falai",
+    model="fal-ai/ltx-2-19b/distilled/image-to-video",
+    sync=False,
+)
+
+status = video.get_status(
+    "image_to_video",
+    submitted["request_id"],
+    api="falai",
+    model=submitted["model"],
+    status_url=submitted.get("status_url"),
+)
+
+result = video.get_result(
+    "image_to_video",
+    submitted["request_id"],
+    api="falai",
+    model=submitted["model"],
+    response_url=submitted.get("response_url"),
+)
+```
+
+For direct downloads with `video.download(..., video_url=...)`, provide an
+`output_path`. Without one, the public dispatcher returns a normalized failure
+instead of `None`. Providers without real async follow-up, such as the current
+Hugging Face text-to-video wrapper, document `sync=False` as a signature
+compatibility no-op and return a completed synchronous result.
 
 ## HeyGen Video Resources
 

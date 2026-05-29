@@ -2,9 +2,11 @@
 
 from ..._shared import (
     download_file,
+    merge_async_refs,
     normalize_output_path,
     normalize_runway_status,
     require_env,
+    runway_async_refs,
     runway_get_task,
     runway_submit,
     runway_wait_for_task,
@@ -163,38 +165,66 @@ def generate_motion_control(prompt=None, image_path=None, image_url=None, video_
     api_key = require_env(ENV_NAME, "Runway")
     submission = runway_submit("/v1/character_performance", payload, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
     task_id = _task_id(submission)
+    async_refs = runway_async_refs(submission, task_id)
 
     if not sync:
-        extra = {"cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
+        extra = {**async_refs, "cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
         return build_result(PROVIDER, model, "submitted", task_id, None, prepared["output_path"], cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], submission, extra)
 
-    raw = runway_wait_for_task(task_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"), poll_interval_seconds=kwargs.get("poll_interval_seconds"))
+    raw = runway_wait_for_task(
+        task_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        poll_interval_seconds=kwargs.get("poll_interval_seconds"),
+        task_url=async_refs.get("task_url"),
+        status_url=async_refs.get("status_url"),
+        result_url=async_refs.get("result_url"),
+        poll_url=async_refs.get("poll_url"),
+    )
     video_url = _video_url(raw)
     if not video_url:
         raise RuntimeError(f"Runway Act-Two task {task_id} did not include an output video URL.")
-    extra = {"cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
-    return build_result(PROVIDER, model, "completed", task_id, video_url, prepared["output_path"], cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, extra)
+    extra = {**async_refs, "cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
+    return build_result(PROVIDER, model, "completed", task_id, video_url, prepared["output_path"], cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], {"submission": submission, "result": raw}, extra)
 
 
 def get_generation_status(request_id, **kwargs):
     model = _selected_model(kwargs)
     api_key = require_env(ENV_NAME, "Runway")
-    raw = runway_get_task(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
-    return {"provider": PROVIDER, "model": model, "request_id": request_id, "status": normalize_runway_status(raw.get("status")), "raw_response": raw}
+    refs = merge_async_refs(None, kwargs, **runway_async_refs({}, request_id))
+    raw = runway_get_task(
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        task_url=refs.get("task_url"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        poll_url=refs.get("poll_url"),
+    )
+    return {"provider": PROVIDER, "model": model, "request_id": request_id, "status": normalize_runway_status(raw.get("status")), "raw_response": raw, **refs}
 
 
 def get_generation_result(request_id, output_path=None, **kwargs):
     model = _selected_model(kwargs)
     cost = _cost(model, kwargs)
     api_key = require_env(ENV_NAME, "Runway")
-    raw = runway_get_task(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    refs = merge_async_refs(None, kwargs, **runway_async_refs({}, request_id))
+    raw = runway_get_task(
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        task_url=refs.get("task_url"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        poll_url=refs.get("poll_url"),
+    )
     status = normalize_runway_status(raw.get("status"))
     if status != "completed":
         raise RuntimeError(f"Runway task {request_id} is not complete. Current status: {status}.")
     video_url = _video_url(raw)
     if not video_url:
         raise RuntimeError(f"Runway Act-Two task {request_id} did not include an output video URL.")
-    extra = {"cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
+    extra = {**refs, "cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
     return build_result(PROVIDER, model, "completed", request_id, video_url, normalize_output_path(output_path), cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, extra)
 
 

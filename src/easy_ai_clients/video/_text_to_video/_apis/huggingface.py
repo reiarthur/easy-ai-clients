@@ -36,6 +36,12 @@ def generate_text_to_video(prompt, output_path=None, sync=True, **kwargs):
     elif target:
         Path(target).parent.mkdir(parents=True, exist_ok=True)
         Path(target).write_bytes(response.content)
+    extra = {"cost_details": {"model": model}}
+    if sync is False:
+        extra["warnings"] = (
+            "Hugging Face text-to-video is synchronous in this wrapper; "
+            "sync=False is accepted for signature compatibility and does not create an async job."
+        )
     return normalize_result(
         "huggingface",
         model,
@@ -47,7 +53,7 @@ def generate_text_to_video(prompt, output_path=None, sync=True, **kwargs):
         False,
         "unavailable",
         raw or {"bytes": len(response.content or b"")},
-        {"cost_details": {"model": model}},
+        extra,
     )
 
 

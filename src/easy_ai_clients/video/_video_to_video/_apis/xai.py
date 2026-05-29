@@ -25,17 +25,35 @@ def generate_video_to_video(prompt=None, video_path=None, video_url=None, output
 
 def get_generation_status(request_id, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
-    raw = common.get_video(request_id, timeout_seconds=kwargs.get("timeout_seconds"))
-    return {"provider": common.PROVIDER, "model": model, "request_id": request_id, "status": common.status(raw.get("status")), "raw_response": raw}
+    refs = common.merge_async_refs(None, kwargs, **common.async_refs({}, request_id))
+    raw = common.get_video(
+        request_id,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        task_url=refs.get("task_url"),
+        poll_url=refs.get("poll_url"),
+    )
+    refs = common.merge_async_refs(refs, raw)
+    return {"provider": common.PROVIDER, "model": model, "request_id": request_id, "status": common.status(raw.get("status")), "raw_response": raw, **refs}
 
 
 def get_generation_result(request_id, output_path=None, **kwargs):
     from ..._shared import extract_video_url, normalize_output_path, normalize_result
 
     model = kwargs.get("model", DEFAULT_MODEL)
-    raw = common.get_video(request_id, timeout_seconds=kwargs.get("timeout_seconds"))
+    refs = common.merge_async_refs(None, kwargs, **common.async_refs({}, request_id))
+    raw = common.get_video(
+        request_id,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        task_url=refs.get("task_url"),
+        poll_url=refs.get("poll_url"),
+    )
+    refs = common.merge_async_refs(refs, raw)
     pricing = common.cost(model, kwargs)
-    return normalize_result(common.PROVIDER, model, common.status(raw.get("status")), request_id, extract_video_url(raw), normalize_output_path(output_path), pricing["cost_usd"], pricing["cost_is_estimated"], pricing["cost_source"], raw, {"cost_details": pricing["cost_details"]})
+    return normalize_result(common.PROVIDER, model, common.status(raw.get("status")), request_id, extract_video_url(raw), normalize_output_path(output_path), pricing["cost_usd"], pricing["cost_is_estimated"], pricing["cost_source"], raw, {**refs, "cost_details": pricing["cost_details"]})
 
 
 def download_generation(request_id=None, video_url=None, output_path=None, **kwargs):
@@ -43,6 +61,8 @@ def download_generation(request_id=None, video_url=None, output_path=None, **kwa
 
     if video_url:
         return download_file(video_url, normalize_output_path(output_path))
+    if not request_id:
+        raise ValueError("request_id or video_url is required.")
     return get_generation_result(request_id, output_path=output_path, **kwargs)
 
 

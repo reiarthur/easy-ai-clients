@@ -56,6 +56,11 @@ The fal.ai page currently contains contradictory generated prose for `num_frames
 
 `duration_seconds` or `billing_duration_seconds` can be supplied for cost precision. If omitted, the wrapper estimates duration from `num_frames / 25` and otherwise follows the provider default when `num_frames` is not provided. Queue helper functions are available.
 
+When fal.ai returns queue URLs, the adapter preserves them and uses them for
+`sync=True` polling. Pass `status_url` back to `video.get_status(...)` and
+`response_url` back to `video.get_result(...)` when present. Calls that only
+provide `request_id`, `model`, and `api` continue to reconstruct queue URLs.
+
 ## Python Example
 
 ```python

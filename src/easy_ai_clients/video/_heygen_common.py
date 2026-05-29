@@ -6,7 +6,13 @@ from collections.abc import Mapping
 from typing import Any
 
 from .. import _heygen
-from ._shared import download_file, normalize_output_path, normalize_result
+from ._shared import (
+    download_file,
+    merge_async_refs,
+    normalize_output_path,
+    normalize_result,
+    safe_provider_url,
+)
 
 PROVIDER = "heygen"
 VIDEO_MODEL = "heygen-v3-video"
@@ -72,7 +78,10 @@ def build_video_result(
     cost: Mapping[str, Any] | None = None,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    item = _heygen.data(raw_response)
+    response_for_status = raw_response
+    if isinstance(raw_response, Mapping) and isinstance(raw_response.get("result"), Mapping):
+        response_for_status = raw_response["result"]
+    item = _heygen.data(response_for_status)
     status = _heygen.normalize_status(item.get("status") if isinstance(item, Mapping) else None)
     resolved_id = request_id or _heygen.response_id(
         raw_response,
@@ -90,7 +99,7 @@ def build_video_result(
     metadata.setdefault("cost_usd", 0.0)
     metadata.setdefault("cost_is_estimated", False)
     metadata.setdefault("cost_source", "unavailable")
-    details: dict[str, Any] = dict(extra or {})
+    details: dict[str, Any] = merge_async_refs(extra, raw_response)
     if isinstance(item, Mapping):
         for name in (
             "video_id",
@@ -123,18 +132,60 @@ def build_video_result(
     )
 
 
-def get_video(video_id: str, *, timeout_seconds: float | None = None, **params: Any) -> dict[str, Any]:
-    return _heygen.request_json(
+def _video_url(video_id: str) -> str:
+    return _heygen.api_base_url() + f"/v3/videos/{_heygen.quote_path(video_id)}"
+
+
+def _lipsync_url(lipsync_id: str) -> str:
+    return _heygen.api_base_url() + f"/v3/lipsyncs/{_heygen.quote_path(lipsync_id)}"
+
+
+def get_video(
+    video_id: str,
+    *,
+    timeout_seconds: float | None = None,
+    status_url: str | None = None,
+    result_url: str | None = None,
+    task_url: str | None = None,
+    poll_url: str | None = None,
+    **params: Any,
+) -> dict[str, Any]:
+    url = (
+        safe_provider_url(status_url)
+        or safe_provider_url(result_url)
+        or safe_provider_url(task_url)
+        or safe_provider_url(poll_url)
+        or _video_url(video_id)
+    )
+    raw = _heygen.request_json(
         "GET",
-        f"/v3/videos/{_heygen.quote_path(video_id)}",
+        url,
         params=params,
         timeout_seconds=timeout_seconds,
     )
+    raw.update(merge_async_refs(None, raw, task_url=url))
+    return raw
 
 
-def wait_video(video_id: str, *, timeout_seconds: float | None = None, poll_interval_seconds: float | None = None) -> dict[str, Any]:
+def wait_video(
+    video_id: str,
+    *,
+    timeout_seconds: float | None = None,
+    poll_interval_seconds: float | None = None,
+    status_url: str | None = None,
+    result_url: str | None = None,
+    task_url: str | None = None,
+    poll_url: str | None = None,
+) -> dict[str, Any]:
     return _heygen.wait_for_result(
-        lambda: get_video(video_id, timeout_seconds=60),
+        lambda: get_video(
+            video_id,
+            timeout_seconds=60,
+            status_url=status_url,
+            result_url=result_url,
+            task_url=task_url,
+            poll_url=poll_url,
+        ),
         timeout_seconds=timeout_seconds,
         poll_interval_seconds=poll_interval_seconds,
     )
@@ -148,17 +199,24 @@ def submit_video(payload: Mapping[str, Any], *, output_path: str | None, sync: b
         timeout_seconds=kwargs.get("timeout_seconds"),
     )
     video_id = _heygen.response_id(raw, "video_id", "id")
+    refs = merge_async_refs(None, raw, task_url=_video_url(video_id) if video_id else None)
     final_raw = wait_video(
         video_id,
         timeout_seconds=kwargs.get("timeout_seconds"),
         poll_interval_seconds=kwargs.get("poll_interval_seconds"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        task_url=refs.get("task_url"),
+        poll_url=refs.get("poll_url"),
     ) if sync and video_id else raw
+    raw_response = {"submission": raw, "result": final_raw} if sync and video_id else raw
     return build_video_result(
         model=model,
-        raw_response=final_raw,
+        raw_response=raw_response,
         request_id=video_id,
         output_path=output_path,
         cost=cost_metadata(kwargs),
+        extra=refs,
     )
 
 
@@ -170,32 +228,73 @@ def submit_lipsync(payload: Mapping[str, Any], *, output_path: str | None, sync:
         timeout_seconds=kwargs.get("timeout_seconds"),
     )
     lipsync_id = _heygen.response_id(raw, "lipsync_id", "id")
+    refs = merge_async_refs(None, raw, task_url=_lipsync_url(lipsync_id) if lipsync_id else None)
     final_raw = wait_lipsync(
         lipsync_id,
         timeout_seconds=kwargs.get("timeout_seconds"),
         poll_interval_seconds=kwargs.get("poll_interval_seconds"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        task_url=refs.get("task_url"),
+        poll_url=refs.get("poll_url"),
     ) if sync and lipsync_id else raw
+    raw_response = {"submission": raw, "result": final_raw} if sync and lipsync_id else raw
     return build_video_result(
         model=LIPSYNC_MODEL,
-        raw_response=final_raw,
+        raw_response=raw_response,
         request_id=lipsync_id,
         output_path=output_path,
         cost=cost_metadata(kwargs),
+        extra=refs,
     )
 
 
-def get_lipsync(lipsync_id: str, *, timeout_seconds: float | None = None, **params: Any) -> dict[str, Any]:
-    return _heygen.request_json(
+def get_lipsync(
+    lipsync_id: str,
+    *,
+    timeout_seconds: float | None = None,
+    status_url: str | None = None,
+    result_url: str | None = None,
+    task_url: str | None = None,
+    poll_url: str | None = None,
+    **params: Any,
+) -> dict[str, Any]:
+    url = (
+        safe_provider_url(status_url)
+        or safe_provider_url(result_url)
+        or safe_provider_url(task_url)
+        or safe_provider_url(poll_url)
+        or _lipsync_url(lipsync_id)
+    )
+    raw = _heygen.request_json(
         "GET",
-        f"/v3/lipsyncs/{_heygen.quote_path(lipsync_id)}",
+        url,
         params=params,
         timeout_seconds=timeout_seconds,
     )
+    raw.update(merge_async_refs(None, raw, task_url=url))
+    return raw
 
 
-def wait_lipsync(lipsync_id: str, *, timeout_seconds: float | None = None, poll_interval_seconds: float | None = None) -> dict[str, Any]:
+def wait_lipsync(
+    lipsync_id: str,
+    *,
+    timeout_seconds: float | None = None,
+    poll_interval_seconds: float | None = None,
+    status_url: str | None = None,
+    result_url: str | None = None,
+    task_url: str | None = None,
+    poll_url: str | None = None,
+) -> dict[str, Any]:
     return _heygen.wait_for_result(
-        lambda: get_lipsync(lipsync_id, timeout_seconds=60),
+        lambda: get_lipsync(
+            lipsync_id,
+            timeout_seconds=60,
+            status_url=status_url,
+            result_url=result_url,
+            task_url=task_url,
+            poll_url=poll_url,
+        ),
         timeout_seconds=timeout_seconds,
         poll_interval_seconds=poll_interval_seconds,
     )
@@ -218,4 +317,3 @@ def audio_fields(audio_path: Any = None, audio_url: Any = None, audio_asset_id: 
         asset_id_key="audio_asset_id",
         timeout_seconds=timeout_seconds,
     )
-

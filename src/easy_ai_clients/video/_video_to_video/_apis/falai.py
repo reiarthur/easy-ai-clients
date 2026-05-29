@@ -5,12 +5,12 @@ import math
 from ..._falai_pricing import FAL_ESTIMATE_OPTIONS, fal_pricing_estimate
 from ..._shared import (
     extract_video_url,
+    fal_async_refs,
     fal_get_result,
     fal_get_status,
-    fal_response_url,
-    fal_status_url,
     fal_submit,
     fal_wait_for_result,
+    merge_async_refs,
     normalize_fal_status,
     require_env,
 )
@@ -147,13 +147,10 @@ def generate_video_to_video(
     api_key = require_env(ENV_NAME, "fal.ai")
     submission = fal_submit(model, payload, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
     request_id = _request_id(submission)
+    async_refs = fal_async_refs(submission, model, request_id)
 
     if not sync:
-        extra = {
-            "status_url": submission.get("status_url") or fal_status_url(model, request_id),
-            "response_url": submission.get("response_url") or fal_response_url(model, request_id),
-            "cost_reason": cost["cost_reason"],
-        }
+        extra = {**async_refs, "cost_reason": cost["cost_reason"]}
         return build_result(
             PROVIDER,
             model,
@@ -174,12 +171,16 @@ def generate_video_to_video(
         api_key,
         timeout_seconds=kwargs.get("timeout_seconds"),
         poll_interval_seconds=kwargs.get("poll_interval_seconds"),
+        status_url=async_refs.get("status_url"),
+        poll_url=async_refs.get("poll_url"),
+        response_url=async_refs.get("response_url"),
     )
     response = raw.get("response") or {}
     video_url_value = extract_video_url(response)
     if not video_url_value:
         raise RuntimeError(f"fal.ai video-to-video result for {request_id} did not include a video URL.")
-    extra = {"cost_reason": cost["cost_reason"]}
+    extra = {**async_refs, "cost_reason": cost["cost_reason"]}
+    raw_response = {"submission": submission, "status": raw.get("status") or {}, "response": response}
     return build_result(
         PROVIDER,
         model,
@@ -190,7 +191,7 @@ def generate_video_to_video(
         cost["cost_usd"],
         cost["cost_is_estimated"],
         cost["cost_source"],
-        raw,
+        raw_response,
         extra,
     )
 
@@ -198,13 +199,22 @@ def generate_video_to_video(
 def get_generation_status(request_id, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
     api_key = require_env(ENV_NAME, "fal.ai")
-    raw = fal_get_status(model, request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    refs = merge_async_refs(None, kwargs, **fal_async_refs({}, model, request_id))
+    raw = fal_get_status(
+        model,
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        status_url=refs.get("status_url"),
+        poll_url=refs.get("poll_url"),
+    )
     return {
         "provider": PROVIDER,
         "model": model,
         "request_id": request_id,
         "status": normalize_fal_status(raw.get("status")),
         "raw_response": raw,
+        **refs,
     }
 
 
@@ -212,13 +222,21 @@ def get_generation_result(request_id, output_path=None, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
     cost = _cost(model, kwargs)
     api_key = require_env(ENV_NAME, "fal.ai")
-    raw = fal_get_result(model, request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    refs = merge_async_refs(None, kwargs, **fal_async_refs({}, model, request_id))
+    raw = fal_get_result(
+        model,
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        response_url=refs.get("response_url"),
+        result_url=refs.get("result_url"),
+    )
     video_url_value = extract_video_url(raw)
     if not video_url_value:
         raise RuntimeError(f"fal.ai video-to-video result for {request_id} did not include a video URL.")
     from ..._shared import normalize_output_path
 
-    extra = {"cost_reason": cost["cost_reason"]}
+    extra = {**refs, "cost_reason": cost["cost_reason"]}
     return build_result(
         PROVIDER,
         model,

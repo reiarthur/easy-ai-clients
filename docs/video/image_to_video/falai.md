@@ -79,6 +79,11 @@ for documented units whose billable quantity is known.
 
 Use `video.get_status`, `video.get_result`, and `video.download` with operation `image_to_video` for async follow-up work. `extra_payload` is supported but can bypass validation.
 
+When fal.ai returns queue URLs, the adapter preserves them and uses them for
+`sync=True` polling. Pass `status_url` back to `video.get_status(...)` and
+`response_url` back to `video.get_result(...)` when present. Calls that only
+provide `request_id`, `model`, and `api` continue to reconstruct queue URLs.
+
 ## Python Example
 
 ```python

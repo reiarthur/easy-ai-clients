@@ -25,6 +25,13 @@ Accepted kwargs are provider-native and include common billing helpers such as `
 | `fal-ai/wan-vace`, `fal-ai/pika/v2/pikadditions`, `fal-ai/video-as-prompt` | `implemented` | per video. |
 | `fal-ai/infinitalk/video-to-video` | `implemented` | seconds; also exposed through `video.video_lipsync`. |
 
+## Async References
+
+When fal.ai returns queue URLs, the adapter preserves them and uses them for
+`sync=True` polling. Pass `status_url` back to `video.get_status(...)` and
+`response_url` back to `video.get_result(...)` when present. Calls that only
+provide `request_id`, `model`, and `api` continue to reconstruct queue URLs.
+
 ## Pricing
 
 When the fal.ai unit is not inferable from request parameters, the wrapper sends the request and returns `cost_source="unavailable"` with a reason. If `billing_unit_quantity` or `unit_quantity` is supplied, the wrapper calls fal.ai's official pricing estimate API and reports `cost_source="fal_pricing_estimate_api"`.

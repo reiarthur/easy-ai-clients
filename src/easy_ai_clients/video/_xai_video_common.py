@@ -13,9 +13,11 @@ from ._shared import (
     extract_video_url,
     http_json,
     media_reference,
+    merge_async_refs,
     normalize_output_path,
     normalize_result,
     require_env,
+    safe_provider_url,
 )
 
 PROVIDER = "xai"
@@ -34,9 +36,36 @@ def submit(endpoint: str, payload: Mapping[str, Any], timeout_seconds: float | N
     return http_json("POST", f"{BASE_URL}{endpoint}", headers=headers(api_key), payload=dict(payload), timeout_seconds=timeout_seconds)
 
 
-def get_video(request_id: str, timeout_seconds: float | None = None) -> dict[str, Any]:
+def video_endpoint_url(request_id: str) -> str:
+    return f"{BASE_URL}/videos/{urllib.parse.quote(str(request_id), safe='')}"
+
+
+def async_refs(raw: Mapping[str, Any] | None, request_id_value: str | None) -> dict[str, Any]:
+    refs = merge_async_refs(None, raw or {})
+    if request_id_value and not any(
+        refs.get(key) for key in ("status_url", "poll_url", "task_url", "result_url")
+    ):
+        return merge_async_refs(refs, task_url=video_endpoint_url(request_id_value))
+    return refs
+
+
+def get_video(
+    request_id: str,
+    timeout_seconds: float | None = None,
+    status_url: str | None = None,
+    result_url: str | None = None,
+    task_url: str | None = None,
+    poll_url: str | None = None,
+) -> dict[str, Any]:
     api_key = require_env(ENV_NAME, "xAI")
-    return http_json("GET", f"{BASE_URL}/videos/{urllib.parse.quote(str(request_id), safe='')}", headers=headers(api_key), timeout_seconds=timeout_seconds)
+    url = (
+        safe_provider_url(status_url)
+        or safe_provider_url(result_url)
+        or safe_provider_url(task_url)
+        or safe_provider_url(poll_url)
+        or video_endpoint_url(request_id)
+    )
+    return http_json("GET", url, headers=headers(api_key), timeout_seconds=timeout_seconds)
 
 
 def status(value: Any) -> str:
@@ -52,12 +81,27 @@ def status(value: Any) -> str:
     return normalized or "submitted"
 
 
-def wait(request_id: str, timeout_seconds: float | None = None, poll_interval_seconds: float | None = None) -> dict[str, Any]:
+def wait(
+    request_id: str,
+    timeout_seconds: float | None = None,
+    poll_interval_seconds: float | None = None,
+    status_url: str | None = None,
+    result_url: str | None = None,
+    task_url: str | None = None,
+    poll_url: str | None = None,
+) -> dict[str, Any]:
     deadline = time.monotonic() + float(timeout_seconds or 900)
     interval = float(poll_interval_seconds or 5)
     last = {}
     while time.monotonic() < deadline:
-        last = get_video(request_id, timeout_seconds=60)
+        last = get_video(
+            request_id,
+            timeout_seconds=60,
+            status_url=status_url,
+            result_url=result_url,
+            task_url=task_url,
+            poll_url=poll_url,
+        )
         current = status(last.get("status"))
         if current == "completed":
             return last
@@ -112,6 +156,7 @@ def finalize(
     pricing = cost(model, payload_value)
     raw = submit(endpoint, payload_value, timeout_seconds=timeout_seconds)
     rid = request_id(raw)
+    refs = async_refs(raw, rid)
     if not sync:
         return normalize_result(
             PROVIDER,
@@ -124,11 +169,20 @@ def finalize(
             pricing["cost_is_estimated"],
             pricing["cost_source"],
             raw,
-            {"cost_details": pricing["cost_details"]},
+            {**refs, "cost_details": pricing["cost_details"]},
         )
-    final = wait(rid, timeout_seconds=timeout_seconds, poll_interval_seconds=poll_interval_seconds)
+    final = wait(
+        rid,
+        timeout_seconds=timeout_seconds,
+        poll_interval_seconds=poll_interval_seconds,
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        task_url=refs.get("task_url"),
+        poll_url=refs.get("poll_url"),
+    )
     video_url = extract_video_url(final)
     saved = download_file(video_url, normalize_output_path(output_path)) if video_url and output_path else normalize_output_path(output_path)
+    refs = merge_async_refs(refs, final)
     return normalize_result(
         PROVIDER,
         model,
@@ -139,8 +193,8 @@ def finalize(
         pricing["cost_usd"],
         pricing["cost_is_estimated"],
         pricing["cost_source"],
-        final,
-        {"cost_details": pricing["cost_details"]},
+        {"submission": raw, "result": final},
+        {**refs, "cost_details": pricing["cost_details"]},
     )
 
 
@@ -149,4 +203,14 @@ def media_object(path: str | None, url: str | None, path_name: str, url_name: st
     return {"url": value} if value else None
 
 
-__all__ = ["DEFAULT_MODEL", "PROVIDER", "cost", "finalize", "get_video", "media_object", "payload", "status"]
+__all__ = [
+    "DEFAULT_MODEL",
+    "PROVIDER",
+    "async_refs",
+    "cost",
+    "finalize",
+    "get_video",
+    "media_object",
+    "payload",
+    "status",
+]

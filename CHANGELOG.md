@@ -5,6 +5,28 @@ The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 0.9.1 - 2026-05-29
+
+### Changed
+
+- Preserved safe provider async references across video submissions, status,
+  result, and sync polling flows, including fal.ai queue URLs, Runway task URLs,
+  Google operation URLs, and Hedra/HeyGen/Together/xAI task metadata.
+- Updated sync video results to retain safe submission metadata alongside final
+  provider responses for debugging and follow-up calls.
+- Changed direct `video.download(..., video_url=...)` behavior to require
+  `output_path` instead of silently returning `None`.
+- Documented Hugging Face text-to-video `sync=False` as a synchronous
+  signature-compatibility no-op.
+
+### Fixed
+
+- Fixed fal.ai video adapters so provider-returned `status_url` and
+  `response_url` are used before reconstructing queue URLs from `model` and
+  `request_id`.
+- Redacted signed upload URLs, upload form fields, credentials, and
+  credential-bearing URLs from normalized video `raw_response` values.
+
 ## 0.9.0 - 2026-05-19
 
 ### Added

@@ -43,7 +43,14 @@ def get_generation_status(request_id, **kwargs):
 def get_generation_result(request_id, output_path=None, **kwargs):
     from ..._heygen_common import LIPSYNC_MODEL, build_video_result, cost_metadata, get_lipsync
 
-    raw = get_lipsync(request_id, timeout_seconds=kwargs.get("timeout_seconds"))
+    raw = get_lipsync(
+        request_id,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        status_url=kwargs.get("status_url"),
+        result_url=kwargs.get("result_url"),
+        task_url=kwargs.get("task_url"),
+        poll_url=kwargs.get("poll_url"),
+    )
     return build_video_result(
         model=kwargs.get("model") or LIPSYNC_MODEL,
         raw_response=raw,

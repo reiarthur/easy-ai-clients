@@ -166,6 +166,14 @@ underlying API expects.
 
 ## Video - `easy_ai_clients.video`
 
+Async video adapters preserve safe provider-native refs such as `status_url`,
+`response_url`, `result_url`, `task_url`, and `operation_url` when providers
+return them. Public helpers accept those refs and use them before reconstructing
+provider URLs from `request_id`, `model`, and `api`. Upload URLs, upload form
+fields, authorization headers, and signed credential-bearing URLs are redacted
+from normalized public results. Direct `video.download(..., video_url=...)`
+requires `output_path`.
+
 ### `video.generate(...)` / `video.text_to_video(...)`
 
 | API | Env var | Doc |

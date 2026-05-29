@@ -3,8 +3,8 @@
 from ..._hedra_common import (
     ENV_NAME,
     PROVIDER,
+    fetch_generation_status,
     hedra_extract_video_url,
-    hedra_get_generation_status,
     submit_generation,
 )
 from ..._shared import (
@@ -113,26 +113,25 @@ def generate_video_with_audio(
 
 def get_generation_status(request_id, **kwargs):
     _, model_data = _selected_model(kwargs)
-    api_key = require_env(ENV_NAME, "Hedra")
-    raw = hedra_get_generation_status(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    raw, refs = fetch_generation_status(request_id, kwargs)
     return {
         "provider": PROVIDER,
         "model": model_data["name"],
         "request_id": request_id,
         "status": normalize_hedra_status(raw.get("status")),
         "raw_response": raw,
+        **refs,
     }
 
 
 def get_generation_result(request_id, output_path=None, **kwargs):
     _, model_data = _selected_model(kwargs)
     cost = _cost(model_data)
-    api_key = require_env(ENV_NAME, "Hedra")
-    raw = hedra_get_generation_status(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    raw, refs = fetch_generation_status(request_id, kwargs)
     video_url = hedra_extract_video_url(raw)
     if not video_url:
         raise RuntimeError(f"Hedra generation {request_id} did not include a downloadable video URL.")
-    extra = {"cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
+    extra = {**refs, "cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
     return build_result(PROVIDER, model_data["name"], "completed", request_id, video_url, normalize_output_path(output_path), cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, extra)
 
 

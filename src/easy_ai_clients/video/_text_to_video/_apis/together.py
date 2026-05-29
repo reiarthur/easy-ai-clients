@@ -20,13 +20,31 @@ def generate_text_to_video(prompt, output_path=None, sync=True, **kwargs):
 
 def get_generation_status(request_id, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
-    raw = common.get_video(request_id, timeout_seconds=kwargs.get("timeout_seconds"))
-    return {"provider": common.PROVIDER, "model": model, "request_id": request_id, "status": common.normalize_status(raw.get("status")), "raw_response": raw}
+    refs = common.merge_async_refs(None, kwargs, **common.async_refs({}, request_id))
+    raw = common.get_video(
+        request_id,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        task_url=refs.get("task_url"),
+        poll_url=refs.get("poll_url"),
+    )
+    refs = common.merge_async_refs(refs, raw)
+    return {"provider": common.PROVIDER, "model": model, "request_id": request_id, "status": common.normalize_status(raw.get("status")), "raw_response": raw, **refs}
 
 
 def get_generation_result(request_id, output_path=None, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
-    raw = common.get_video(request_id, timeout_seconds=kwargs.get("timeout_seconds"))
+    refs = common.merge_async_refs(None, kwargs, **common.async_refs({}, request_id))
+    raw = common.get_video(
+        request_id,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        task_url=refs.get("task_url"),
+        poll_url=refs.get("poll_url"),
+    )
+    refs = common.merge_async_refs(refs, raw)
     return common.build_result(
         model=model,
         status=common.normalize_status(raw.get("status")),
@@ -35,6 +53,7 @@ def get_generation_result(request_id, output_path=None, **kwargs):
         output_path=output_path,
         raw=raw,
         cost_metadata=common.cost(model, kwargs),
+        extra=refs,
     )
 
 
@@ -43,6 +62,8 @@ def download_generation(request_id=None, video_url=None, output_path=None, **kwa
 
     if video_url:
         return download_file(video_url, normalize_output_path(output_path))
+    if not request_id:
+        raise ValueError("request_id or video_url is required.")
     return get_generation_result(request_id, output_path=output_path, **kwargs)
 
 

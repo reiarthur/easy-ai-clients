@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from ._shared import (
+    hedra_async_refs,
     hedra_extract_video_url,
     hedra_get_generation_status,
     hedra_json,
     hedra_upload_local_asset,
     hedra_wait_for_result,
+    merge_async_refs,
     normalize_hedra_status,
     normalize_output_path,
     require_env,
@@ -165,31 +167,50 @@ def submit_generation(payload, sync, output_path, model_data, cost, kwargs):
     generation_id = raw.get("id") or raw.get("generation_id")
     if not generation_id:
         raise RuntimeError("Hedra generation response did not include an id.")
+    refs = hedra_async_refs(raw, generation_id)
     if not sync:
-        extra = {"cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
+        extra = {**refs, "cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
         return model_data["name"], generation_id, "submitted", None, normalize_output_path(output_path), raw, extra
     status = hedra_wait_for_result(
         generation_id,
         api_key,
         timeout_seconds=kwargs.get("timeout_seconds"),
         poll_interval_seconds=kwargs.get("poll_interval_seconds"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        poll_url=refs.get("poll_url"),
     )
     video_url = hedra_extract_video_url(status)
     if not video_url:
         raise RuntimeError(f"Hedra generation {generation_id} did not include a downloadable video URL.")
-    extra = {"cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
-    return model_data["name"], generation_id, "completed", video_url, normalize_output_path(output_path), status, extra
+    extra = {**refs, "cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
+    return model_data["name"], generation_id, "completed", video_url, normalize_output_path(output_path), {"submission": raw, "result": status}, extra
+
+
+def fetch_generation_status(request_id, kwargs):
+    api_key = require_env(ENV_NAME, "Hedra")
+    refs = merge_async_refs(None, kwargs, **hedra_async_refs({}, request_id))
+    raw = hedra_get_generation_status(
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        poll_url=refs.get("poll_url"),
+    )
+    refs = merge_async_refs(refs, raw)
+    return raw, refs
 
 
 def hedra_status_result(request_id, model_data, kwargs):
-    api_key = require_env(ENV_NAME, "Hedra")
-    raw = hedra_get_generation_status(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    raw, refs = fetch_generation_status(request_id, kwargs)
     return {
         "provider": PROVIDER,
         "model": model_data["name"],
         "request_id": request_id,
         "status": normalize_hedra_status(raw.get("status")),
         "raw_response": raw,
+        **refs,
     }
 
 

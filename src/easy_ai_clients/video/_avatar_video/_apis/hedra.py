@@ -3,10 +3,10 @@
 from ..._hedra_common import (
     ENV_NAME,
     PROVIDER,
+    fetch_generation_status,
     generated_video_inputs,
     hedra_cost,
     hedra_extract_video_url,
-    hedra_get_generation_status,
     hedra_status_result,
     media_payload_key,
     resolve_model,
@@ -125,12 +125,11 @@ def get_generation_status(request_id, **kwargs):
 def get_generation_result(request_id, output_path=None, **kwargs):
     _, model_data = _selected_model(kwargs)
     cost = hedra_cost(model_data, kwargs)
-    api_key = require_env(ENV_NAME, "Hedra")
-    raw = hedra_get_generation_status(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    raw, refs = fetch_generation_status(request_id, kwargs)
     video_url = hedra_extract_video_url(raw)
     if not video_url:
         raise RuntimeError(f"Hedra generation {request_id} did not include a downloadable video URL.")
-    extra = {"cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
+    extra = {**refs, "cost_reason": cost["cost_reason"], "cost_credits": cost["cost_credits"], "credit_source": cost["credit_source"]}
     return build_result(PROVIDER, model_data["name"], "completed", request_id, video_url, normalize_output_path(output_path), cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, extra)
 
 

@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
 
 import requests
@@ -121,7 +122,7 @@ def http_json(method, url, headers=None, payload=None, timeout_seconds=None):
 
 def download_file(url, output_path, headers=None, timeout_seconds=None):
     if not output_path:
-        return None
+        raise ValueError("output_path is required when downloading a video_url.")
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(str(url), headers=dict(headers or {}), method="GET")
@@ -143,6 +144,185 @@ def download_file(url, output_path, headers=None, timeout_seconds=None):
     return str(target)
 
 
+_ASYNC_REF_KEY_ALIASES = {
+    "status_url": "status_url",
+    "statusUrl": "status_url",
+    "response_url": "response_url",
+    "responseUrl": "response_url",
+    "result_url": "result_url",
+    "resultUrl": "result_url",
+    "poll_url": "poll_url",
+    "pollUrl": "poll_url",
+    "polling_url": "poll_url",
+    "pollingUrl": "poll_url",
+    "task_url": "task_url",
+    "taskUrl": "task_url",
+    "operation_url": "operation_url",
+    "operationUrl": "operation_url",
+    "cancel_url": "cancel_url",
+    "cancelUrl": "cancel_url",
+    "download_url": "download_url",
+    "downloadUrl": "download_url",
+    "video_url": "video_url",
+    "videoUrl": "video_url",
+    "generation_id": "generation_id",
+    "generationId": "generation_id",
+    "task_id": "task_id",
+    "taskId": "task_id",
+    "job_id": "job_id",
+    "jobId": "job_id",
+    "operation_name": "operation_name",
+    "operationName": "operation_name",
+    "video_id": "video_id",
+    "videoId": "video_id",
+    "session_id": "session_id",
+    "sessionId": "session_id",
+    "lipsync_id": "lipsync_id",
+    "lipsyncId": "lipsync_id",
+    "video_translation_id": "video_translation_id",
+    "videoTranslationId": "video_translation_id",
+    "translation_id": "translation_id",
+    "translationId": "translation_id",
+}
+
+_ASYNC_URL_REF_KEYS = {
+    key for key in set(_ASYNC_REF_KEY_ALIASES.values()) if key.endswith("_url")
+}
+_ASYNC_CONTAINER_KEYS = ("data", "submission", "result", "response", "task", "operation")
+_SENSITIVE_QUERY_FRAGMENTS = (
+    "token",
+    "secret",
+    "signature",
+    "credential",
+    "policy",
+    "x-amz",
+    "x-goog",
+    "authorization",
+    "apikey",
+    "api_key",
+    "access_key",
+)
+_SENSITIVE_RAW_KEY_FRAGMENTS = (
+    "authorization",
+    "api_key",
+    "apikey",
+    "access_key",
+    "secret",
+    "token",
+    "signature",
+    "credential",
+    "password",
+    "bearer",
+    "uploadurl",
+    "upload_url",
+    "signed",
+    "policy",
+)
+_SENSITIVE_RAW_KEYS = {"fields", "form", "form_fields", "headers"}
+
+
+def safe_provider_url(value):
+    """Return a provider operation URL only when it does not look credential-bearing."""
+
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    parsed = urllib.parse.urlsplit(text)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    if parsed.username or parsed.password:
+        return None
+    for key, _ in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
+        normalized = key.lower()
+        if any(fragment in normalized for fragment in _SENSITIVE_QUERY_FRAGMENTS):
+            return None
+    return text
+
+
+def _looks_like_url(value):
+    if not isinstance(value, str):
+        return False
+    parsed = urllib.parse.urlsplit(value.strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def sanitize_public_response(value, key_name=""):
+    normalized_key = str(key_name or "").replace("-", "_").lower()
+    if normalized_key in _SENSITIVE_RAW_KEYS or any(
+        fragment in normalized_key for fragment in _SENSITIVE_RAW_KEY_FRAGMENTS
+    ):
+        return "[redacted]"
+    if isinstance(value, Mapping):
+        return {str(key): sanitize_public_response(item, str(key)) for key, item in value.items()}
+    if isinstance(value, list):
+        return [sanitize_public_response(item, key_name) for item in value]
+    if _looks_like_url(value) and safe_provider_url(value) is None:
+        return "[redacted]"
+    return value
+
+
+def _safe_async_scalar(value):
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, int | float):
+        return str(value)
+    return None
+
+
+def _collect_async_refs(source, refs):
+    if not isinstance(source, Mapping):
+        return
+    for provider_key, public_key in _ASYNC_REF_KEY_ALIASES.items():
+        if provider_key not in source or source.get(provider_key) is None:
+            continue
+        value = source.get(provider_key)
+        if public_key in _ASYNC_URL_REF_KEYS:
+            safe_url = safe_provider_url(value)
+            if safe_url:
+                refs.setdefault(public_key, safe_url)
+        else:
+            scalar = _safe_async_scalar(value)
+            if scalar is not None:
+                refs.setdefault(public_key, scalar)
+    for key in _ASYNC_CONTAINER_KEYS:
+        nested = source.get(key)
+        if isinstance(nested, Mapping):
+            _collect_async_refs(nested, refs)
+
+
+def safe_async_refs(*sources, **defaults):
+    refs = {}
+    for source in sources:
+        _collect_async_refs(source, refs)
+    for key, value in defaults.items():
+        public_key = _ASYNC_REF_KEY_ALIASES.get(key, key)
+        if value is None or public_key in refs:
+            continue
+        if public_key in _ASYNC_URL_REF_KEYS:
+            safe_url = safe_provider_url(value)
+            if safe_url:
+                refs[public_key] = safe_url
+        else:
+            scalar = _safe_async_scalar(value)
+            if scalar is not None:
+                refs[public_key] = scalar
+    return refs
+
+
+def async_ref_kwargs(kwargs):
+    return safe_async_refs({key: kwargs.get(key) for key in _ASYNC_REF_KEY_ALIASES})
+
+
+def merge_async_refs(extra=None, *sources, **defaults):
+    merged = safe_async_refs(*sources, **defaults)
+    if extra:
+        merged.update(dict(extra))
+    return merged
+
+
 def normalize_result(provider, model, status=None, request_id=None, video_url=None, output_path=None, cost_usd=None, cost_is_estimated=True, cost_source=None, raw_response=None, extra=None):
     warnings = []
     if cost_usd is None:
@@ -162,8 +342,11 @@ def normalize_result(provider, model, status=None, request_id=None, video_url=No
         "cost_is_estimated": bool(cost_is_estimated),
         "cost_source": cost_source,
         "cost_details": {},
-        "raw_response": raw_response or {},
+        "raw_response": sanitize_public_response(raw_response or {}),
     }
+    async_refs = safe_async_refs(raw_response or {})
+    if async_refs:
+        result.update(async_refs)
     if extra:
         result.update(dict(extra))
         result.setdefault("cost_currency", "USD")
@@ -256,12 +439,33 @@ def fal_response_url(model, request_id):
     return FAL_QUEUE_BASE_URL + "/" + model + "/requests/" + urllib.parse.quote(str(request_id), safe="") + "/response"
 
 
-def fal_get_status(model, request_id, api_key, timeout_seconds=None):
-    return http_json("GET", fal_status_url(model, request_id) + "?logs=1", headers=fal_headers(api_key), timeout_seconds=timeout_seconds)
+def fal_async_refs(submission, model, request_id):
+    refs = safe_async_refs(submission or {})
+    defaults = {}
+    if request_id and not any(refs.get(key) for key in ("status_url", "poll_url")):
+        defaults["status_url"] = fal_status_url(model, request_id) + "?logs=1"
+    if request_id and not any(refs.get(key) for key in ("response_url", "result_url")):
+        defaults["response_url"] = fal_response_url(model, request_id)
+    return safe_async_refs(refs, **defaults)
 
 
-def fal_get_result(model, request_id, api_key, timeout_seconds=None):
-    return http_json("GET", fal_response_url(model, request_id), headers=fal_headers(api_key), timeout_seconds=timeout_seconds)
+def fal_get_status(model, request_id, api_key, timeout_seconds=None, status_url=None, poll_url=None):
+    explicit_url = safe_provider_url(status_url) or safe_provider_url(poll_url)
+    url = explicit_url or (fal_status_url(model, request_id) + "?logs=1")
+    return http_json("GET", url, headers=fal_headers(api_key), timeout_seconds=timeout_seconds)
+
+
+def fal_get_result(
+    model,
+    request_id,
+    api_key,
+    timeout_seconds=None,
+    response_url=None,
+    result_url=None,
+):
+    explicit_url = safe_provider_url(response_url) or safe_provider_url(result_url)
+    url = explicit_url or fal_response_url(model, request_id)
+    return http_json("GET", url, headers=fal_headers(api_key), timeout_seconds=timeout_seconds)
 
 
 def normalize_fal_status(value):
@@ -279,15 +483,39 @@ def normalize_fal_status(value):
     return "submitted"
 
 
-def fal_wait_for_result(model, request_id, api_key, timeout_seconds=None, poll_interval_seconds=None):
+def fal_wait_for_result(
+    model,
+    request_id,
+    api_key,
+    timeout_seconds=None,
+    poll_interval_seconds=None,
+    status_url=None,
+    poll_url=None,
+    response_url=None,
+    result_url=None,
+):
     deadline = time.monotonic() + float(timeout_seconds or 900)
     interval = float(poll_interval_seconds or 5)
     last_status = {}
     while time.monotonic() < deadline:
-        last_status = fal_get_status(model, request_id, api_key, timeout_seconds=60)
+        last_status = fal_get_status(
+            model,
+            request_id,
+            api_key,
+            timeout_seconds=60,
+            status_url=status_url,
+            poll_url=poll_url,
+        )
         normalized = normalize_fal_status(last_status.get("status"))
         if normalized == "completed":
-            result = fal_get_result(model, request_id, api_key, timeout_seconds=60)
+            result = fal_get_result(
+                model,
+                request_id,
+                api_key,
+                timeout_seconds=60,
+                response_url=response_url,
+                result_url=result_url,
+            )
             return {"status": last_status, "response": result}
         if normalized in ("failed", "canceled"):
             raise RuntimeError(f"fal.ai generation {request_id} ended with status {last_status}.")
@@ -335,6 +563,12 @@ def extract_video_url(response):
         if isinstance(nested, dict) and nested.get("url"):
             return nested.get("url")
         return output.get("url") or output.get("uri")
+    for key in ("data", "result", "response"):
+        nested = response.get(key)
+        if isinstance(nested, dict):
+            nested_url = extract_video_url(nested)
+            if nested_url:
+                return nested_url
     return response.get("video_url") or response.get("url")
 
 
@@ -398,8 +632,41 @@ def runway_media_uri(path, url, path_name, url_name, api_key, timeout_seconds=No
     return None
 
 
-def runway_get_task(task_id, api_key, timeout_seconds=None):
-    return http_json("GET", RUNWAY_BASE_URL + "/v1/tasks/" + urllib.parse.quote(str(task_id), safe=""), headers=runway_headers(api_key), timeout_seconds=timeout_seconds)
+def runway_task_url(task_id):
+    return RUNWAY_BASE_URL + "/v1/tasks/" + urllib.parse.quote(str(task_id), safe="")
+
+
+def runway_async_refs(submission, task_id):
+    refs = safe_async_refs(submission or {})
+    if task_id and not any(
+        refs.get(key) for key in ("status_url", "poll_url", "task_url", "result_url")
+    ):
+        return safe_async_refs(refs, task_url=runway_task_url(task_id))
+    return refs
+
+
+def runway_get_task(
+    task_id,
+    api_key,
+    timeout_seconds=None,
+    task_url=None,
+    status_url=None,
+    result_url=None,
+    poll_url=None,
+):
+    explicit_url = (
+        safe_provider_url(status_url)
+        or safe_provider_url(task_url)
+        or safe_provider_url(result_url)
+        or safe_provider_url(poll_url)
+    )
+    url = explicit_url or runway_task_url(task_id)
+    return http_json(
+        "GET",
+        url,
+        headers=runway_headers(api_key),
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def normalize_runway_status(value):
@@ -417,12 +684,29 @@ def normalize_runway_status(value):
     return "submitted"
 
 
-def runway_wait_for_task(task_id, api_key, timeout_seconds=None, poll_interval_seconds=None):
+def runway_wait_for_task(
+    task_id,
+    api_key,
+    timeout_seconds=None,
+    poll_interval_seconds=None,
+    task_url=None,
+    status_url=None,
+    result_url=None,
+    poll_url=None,
+):
     deadline = time.monotonic() + float(timeout_seconds or 900)
     interval = float(poll_interval_seconds or 5)
     last_status = {}
     while time.monotonic() < deadline:
-        last_status = runway_get_task(task_id, api_key, timeout_seconds=60)
+        last_status = runway_get_task(
+            task_id,
+            api_key,
+            timeout_seconds=60,
+            task_url=task_url,
+            status_url=status_url,
+            result_url=result_url,
+            poll_url=poll_url,
+        )
         normalized = normalize_runway_status(last_status.get("status"))
         if normalized == "completed":
             return last_status
@@ -443,8 +727,21 @@ def google_operation_url(operation_name):
     return GOOGLE_GEMINI_BASE_URL + "/" + name
 
 
-def google_get_operation(operation_name, api_key, timeout_seconds=None):
-    return http_json("GET", google_operation_url(operation_name), headers=google_headers(api_key), timeout_seconds=timeout_seconds)
+def google_async_refs(submission, operation_name):
+    refs = safe_async_refs(submission or {}, operation_name=operation_name)
+    if operation_name and not refs.get("operation_url"):
+        return safe_async_refs(refs, operation_url=google_operation_url(operation_name))
+    return refs
+
+
+def google_get_operation(operation_name, api_key, timeout_seconds=None, operation_url=None):
+    url = safe_provider_url(operation_url) or google_operation_url(operation_name)
+    return http_json(
+        "GET",
+        url,
+        headers=google_headers(api_key),
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def google_extract_video_url(operation):
@@ -466,12 +763,23 @@ def google_extract_video_url(operation):
     return None
 
 
-def google_wait_for_operation(operation_name, api_key, timeout_seconds=None, poll_interval_seconds=None):
+def google_wait_for_operation(
+    operation_name,
+    api_key,
+    timeout_seconds=None,
+    poll_interval_seconds=None,
+    operation_url=None,
+):
     deadline = time.monotonic() + float(timeout_seconds or 900)
     interval = float(poll_interval_seconds or 10)
     last_status = {}
     while time.monotonic() < deadline:
-        last_status = google_get_operation(operation_name, api_key, timeout_seconds=60)
+        last_status = google_get_operation(
+            operation_name,
+            api_key,
+            timeout_seconds=60,
+            operation_url=operation_url,
+        )
         if last_status.get("done") is True:
             if last_status.get("error"):
                 raise RuntimeError(f"Google Veo operation failed: {last_status.get('error')}")
@@ -547,7 +855,37 @@ def normalize_hedra_status(value):
     return "submitted"
 
 
-def hedra_get_generation_status(generation_id, api_key, timeout_seconds=None):
+def hedra_generation_status_url(generation_id):
+    return HEDRA_BASE_URL + "/generations/" + urllib.parse.quote(str(generation_id), safe="") + "/status"
+
+
+def hedra_async_refs(submission, generation_id):
+    refs = safe_async_refs(submission or {}, generation_id=generation_id)
+    if generation_id and not any(refs.get(key) for key in ("status_url", "poll_url", "result_url")):
+        return safe_async_refs(refs, status_url=hedra_generation_status_url(generation_id))
+    return refs
+
+
+def hedra_get_generation_status(
+    generation_id,
+    api_key,
+    timeout_seconds=None,
+    status_url=None,
+    result_url=None,
+    poll_url=None,
+):
+    explicit_url = (
+        safe_provider_url(status_url)
+        or safe_provider_url(result_url)
+        or safe_provider_url(poll_url)
+    )
+    if explicit_url:
+        return http_json(
+            "GET",
+            explicit_url,
+            headers=hedra_headers(api_key),
+            timeout_seconds=timeout_seconds,
+        )
     return hedra_json(
         "GET",
         "/generations/" + urllib.parse.quote(str(generation_id), safe="") + "/status",
@@ -556,12 +894,27 @@ def hedra_get_generation_status(generation_id, api_key, timeout_seconds=None):
     )
 
 
-def hedra_wait_for_result(generation_id, api_key, timeout_seconds=None, poll_interval_seconds=None):
+def hedra_wait_for_result(
+    generation_id,
+    api_key,
+    timeout_seconds=None,
+    poll_interval_seconds=None,
+    status_url=None,
+    result_url=None,
+    poll_url=None,
+):
     deadline = time.monotonic() + float(timeout_seconds or 1800)
     interval = float(poll_interval_seconds or 10)
     last_status = {}
     while time.monotonic() < deadline:
-        last_status = hedra_get_generation_status(generation_id, api_key, timeout_seconds=60)
+        last_status = hedra_get_generation_status(
+            generation_id,
+            api_key,
+            timeout_seconds=60,
+            status_url=status_url,
+            result_url=result_url,
+            poll_url=poll_url,
+        )
         normalized = normalize_hedra_status(last_status.get("status"))
         if normalized == "completed":
             return last_status

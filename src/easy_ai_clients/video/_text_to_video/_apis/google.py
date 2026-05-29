@@ -3,11 +3,13 @@
 from ..._shared import (
     GOOGLE_GEMINI_BASE_URL,
     download_file,
+    google_async_refs,
     google_extract_video_url,
     google_get_operation,
     google_headers,
     google_wait_for_operation,
     http_json,
+    merge_async_refs,
     normalize_output_path,
     require_env,
     validate_allowed_kwargs,
@@ -214,34 +216,54 @@ def generate_text_to_video(prompt, output_path=None, sync=True, **kwargs):
     url = GOOGLE_GEMINI_BASE_URL + "/models/" + model + ":predictLongRunning"
     submission = http_json("POST", url, headers=google_headers(api_key), payload=payload, timeout_seconds=kwargs.get("timeout_seconds"))
     operation_name = _operation_name(submission)
+    async_refs = google_async_refs(submission, operation_name)
 
     if not sync:
-        extra = {"operation_name": operation_name, "cost_reason": cost["cost_reason"]}
+        extra = {**async_refs, "cost_reason": cost["cost_reason"]}
         return build_result(PROVIDER, model, "submitted", operation_name, None, prepared["output_path"], cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], submission, extra)
 
-    operation = google_wait_for_operation(operation_name, api_key, timeout_seconds=kwargs.get("timeout_seconds"), poll_interval_seconds=kwargs.get("poll_interval_seconds"))
+    operation = google_wait_for_operation(
+        operation_name,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        poll_interval_seconds=kwargs.get("poll_interval_seconds"),
+        operation_url=async_refs.get("operation_url"),
+    )
     video_url = google_extract_video_url(operation)
     if not video_url:
         raise RuntimeError(f"Google Veo operation {operation_name} did not include a downloadable video URI.")
-    extra = {"operation_name": operation_name, "cost_reason": cost["cost_reason"]}
-    return build_result(PROVIDER, model, "completed", operation_name, video_url, prepared["output_path"], cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], operation, extra, download_headers=google_headers(api_key))
+    extra = {**async_refs, "cost_reason": cost["cost_reason"]}
+    raw_response = {"submission": submission, "result": operation}
+    return build_result(PROVIDER, model, "completed", operation_name, video_url, prepared["output_path"], cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw_response, extra, download_headers=google_headers(api_key))
 
 
 def get_generation_status(request_id, **kwargs):
     model = _selected_model(kwargs)
     api_key = require_env(ENV_NAME, "Google Veo")
-    raw = google_get_operation(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    refs = merge_async_refs(None, kwargs, **google_async_refs({}, request_id))
+    raw = google_get_operation(
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        operation_url=refs.get("operation_url"),
+    )
     status = "completed" if raw.get("done") is True else "running"
     if raw.get("error"):
         status = "failed"
-    return {"provider": PROVIDER, "model": model, "request_id": request_id, "operation_name": request_id, "status": status, "raw_response": raw}
+    return {"provider": PROVIDER, "model": model, "request_id": request_id, "operation_name": request_id, "status": status, "raw_response": raw, **refs}
 
 
 def get_generation_result(request_id, output_path=None, **kwargs):
     model = _selected_model(kwargs)
     cost = _cost(model, kwargs)
     api_key = require_env(ENV_NAME, "Google Veo")
-    raw = google_get_operation(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    refs = merge_async_refs(None, kwargs, **google_async_refs({}, request_id))
+    raw = google_get_operation(
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        operation_url=refs.get("operation_url"),
+    )
     if raw.get("done") is not True:
         raise RuntimeError(f"Google Veo operation {request_id} is not complete.")
     if raw.get("error"):
@@ -249,7 +271,7 @@ def get_generation_result(request_id, output_path=None, **kwargs):
     video_url = google_extract_video_url(raw)
     if not video_url:
         raise RuntimeError(f"Google Veo operation {request_id} did not include a downloadable video URI.")
-    extra = {"operation_name": request_id, "cost_reason": cost["cost_reason"]}
+    extra = {**refs, "operation_name": request_id, "cost_reason": cost["cost_reason"]}
     return build_result(PROVIDER, model, "completed", request_id, video_url, normalize_output_path(output_path), cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, extra, download_headers=google_headers(api_key))
 
 

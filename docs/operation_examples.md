@@ -158,7 +158,42 @@ status = video.get_status("motion_control", motion_clip["request_id"], api="fala
 ```
 
 When `sync=False`, use `video.get_status`, `video.get_result`, or
-`video.download` with the same operation name and provider.
+`video.download` with the same operation name and provider. If the submitted
+result includes provider refs such as `status_url`, `response_url`, `task_url`,
+or `operation_url`, pass them back so the helper can use the provider-returned
+URL before falling back to `request_id` URL construction.
+
+```python
+from easy_ai_clients import video
+
+submitted = video.image_to_video(
+    "Slow cinematic camera push-in.",
+    "input.png",
+    api="falai",
+    model="fal-ai/ltx-2-19b/distilled/image-to-video",
+    sync=False,
+)
+
+status = video.get_status(
+    "image_to_video",
+    submitted["request_id"],
+    api="falai",
+    model=submitted["model"],
+    status_url=submitted.get("status_url"),
+)
+
+result = video.get_result(
+    "image_to_video",
+    submitted["request_id"],
+    api="falai",
+    model=submitted["model"],
+    response_url=submitted.get("response_url"),
+)
+```
+
+Direct `video.download(..., video_url=...)` calls require `output_path`; the
+dispatcher returns a normalized failure instead of silently returning `None`
+when no local path is provided.
 
 ## Avatar and lip-sync video
 
@@ -256,4 +291,3 @@ endpoint = webhooks.create_endpoint(
 webhooks.rotate_secret(endpoint["data"]["id"], api="heygen")
 media.delete_asset(asset["data"]["asset_id"], api="heygen", confirm=True)
 ```
-

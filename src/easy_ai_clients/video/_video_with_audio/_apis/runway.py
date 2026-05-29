@@ -3,10 +3,12 @@
 from ..._shared import (
     download_file,
     extract_video_url,
+    merge_async_refs,
     normalize_output_path,
     normalize_result,
     normalize_runway_status,
     require_env,
+    runway_async_refs,
     runway_get_task,
     runway_media_uri,
     runway_submit,
@@ -44,33 +46,63 @@ def generate_video_with_audio(video_path=None, video_url=None, prompt=None, outp
     cost = _cost(model, kwargs)
     raw = runway_submit(API_ENDPOINT, payload, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
     task_id = raw.get("id") or raw.get("taskId")
+    async_refs = runway_async_refs(raw, task_id)
     if not sync:
-        return normalize_result(PROVIDER, model, "submitted", task_id, None, normalize_output_path(output_path), cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, {"cost_details": cost["cost_details"]})
-    final = runway_wait_for_task(task_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"), poll_interval_seconds=kwargs.get("poll_interval_seconds"))
+        return normalize_result(PROVIDER, model, "submitted", task_id, None, normalize_output_path(output_path), cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, {**async_refs, "cost_details": cost["cost_details"]})
+    final = runway_wait_for_task(
+        task_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        poll_interval_seconds=kwargs.get("poll_interval_seconds"),
+        task_url=async_refs.get("task_url"),
+        status_url=async_refs.get("status_url"),
+        result_url=async_refs.get("result_url"),
+        poll_url=async_refs.get("poll_url"),
+    )
     url = extract_video_url(final)
     saved = download_file(url, normalize_output_path(output_path)) if url and output_path else normalize_output_path(output_path)
-    return normalize_result(PROVIDER, model, "completed", task_id, url, saved, cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], final, {"cost_details": cost["cost_details"]})
+    return normalize_result(PROVIDER, model, "completed", task_id, url, saved, cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], {"submission": raw, "result": final}, {**async_refs, "cost_details": cost["cost_details"]})
 
 
 def get_generation_status(request_id, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
     api_key = require_env(ENV_NAME, "Runway")
-    raw = runway_get_task(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
-    return {"provider": PROVIDER, "model": model, "request_id": request_id, "status": normalize_runway_status(raw.get("status")), "raw_response": raw}
+    refs = merge_async_refs(None, kwargs, **runway_async_refs({}, request_id))
+    raw = runway_get_task(
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        task_url=refs.get("task_url"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        poll_url=refs.get("poll_url"),
+    )
+    return {"provider": PROVIDER, "model": model, "request_id": request_id, "status": normalize_runway_status(raw.get("status")), "raw_response": raw, **refs}
 
 
 def get_generation_result(request_id, output_path=None, **kwargs):
     model = kwargs.get("model", DEFAULT_MODEL)
     cost = _cost(model, kwargs)
     api_key = require_env(ENV_NAME, "Runway")
-    raw = runway_get_task(request_id, api_key, timeout_seconds=kwargs.get("timeout_seconds"))
+    refs = merge_async_refs(None, kwargs, **runway_async_refs({}, request_id))
+    raw = runway_get_task(
+        request_id,
+        api_key,
+        timeout_seconds=kwargs.get("timeout_seconds"),
+        task_url=refs.get("task_url"),
+        status_url=refs.get("status_url"),
+        result_url=refs.get("result_url"),
+        poll_url=refs.get("poll_url"),
+    )
     url = extract_video_url(raw)
-    return normalize_result(PROVIDER, model, normalize_runway_status(raw.get("status")), request_id, url, normalize_output_path(output_path), cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, {"cost_details": cost["cost_details"]})
+    return normalize_result(PROVIDER, model, normalize_runway_status(raw.get("status")), request_id, url, normalize_output_path(output_path), cost["cost_usd"], cost["cost_is_estimated"], cost["cost_source"], raw, {**refs, "cost_details": cost["cost_details"]})
 
 
 def download_generation(request_id=None, video_url=None, output_path=None, **kwargs):
     if video_url:
         return download_file(video_url, normalize_output_path(output_path))
+    if not request_id:
+        raise ValueError("request_id or video_url is required.")
     return get_generation_result(request_id, output_path=output_path, **kwargs)
 
 
