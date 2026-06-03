@@ -88,6 +88,85 @@ print(deepgram["text"])
 print(openai["cost_source"])
 ```
 
+## Music
+
+```python
+from easy_ai_clients import music
+
+track = music.text_to_music(
+    "Warm lo-fi loop with soft drums.",
+    api="stability",
+    duration_seconds=30,
+    output_format="mp3",
+)
+
+alias_track = music.generate(
+    "Upbeat 30-second product intro.",
+    api="elevenlabs",
+)
+
+song = music.lyrics_to_song(
+    "[Verse]\nWalking under city lights\n[Chorus]\nWe keep moving on",
+    prompt="Modern pop ballad with warm vocals.",
+    api="minimax",
+)
+
+visual_score = music.media_to_music(
+    "cover.png",
+    prompt="Create a cinematic orchestral theme.",
+    api="google",
+)
+
+remix = music.audio_to_music(
+    "reference.wav",
+    prompt="Turn this into a polished pop track.",
+    api="musicgpt",
+)
+
+extended = music.edit(
+    "song.mp3",
+    prompt="Extend the ending by 20 seconds.",
+    api="sonauto",
+)
+
+stems = music.stem_separation(
+    "song.mp3",
+    api="elevenlabs",
+)
+
+converted = music.voice_conversion(
+    "vocal.wav",
+    voice="voice-id",
+    api="musicfy",
+)
+```
+
+`music.generate(...)` is an alias for `music.text_to_music(...)`.
+
+## Music async helpers and download
+
+```python
+from easy_ai_clients import music
+
+status = music.get_status("text_to_music", "request-id", api="falai")
+
+result = music.get_result(
+    "text_to_music",
+    "request-id",
+    output_path="song.mp3",
+    api="falai",
+)
+
+downloaded = music.download(
+    "text_to_music",
+    audio_url="https://example.com/song.mp3",
+    output_path="song.mp3",
+    api="google",
+)
+```
+
+Direct music downloads require `output_path`.
+
 ## Images
 
 ```python

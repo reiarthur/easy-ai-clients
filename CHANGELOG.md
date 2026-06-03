@@ -5,6 +5,16 @@ The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 0.10.0 - 2026-06-03
+
+### Added
+
+- Added `easy_ai_clients.music` with text-to-music, lyrics-to-song,
+  media-to-music, audio-to-music, music editing, stem separation, voice
+  conversion, async helper, direct download, and cost metadata support.
+- Added music provider documentation, credential references, examples, and
+  safe unit tests.
+
 ## 0.9.1 - 2026-05-29
 
 ### Changed

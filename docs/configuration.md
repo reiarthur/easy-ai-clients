@@ -44,32 +44,92 @@ Never commit a real `.env` file. Use the repository template:
 | Variable | Used by |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | `text.generate(api="anthropic")`, `image.analyze(api="anthropic")` |
+| `BEATOVEN_API_KEY` | `music.text_to_music(api="beatoven")`, `music.stem_separation(api="beatoven")` |
 | `BFL_API_KEY` | `image.generate / edit / remix(api="bfl")` |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Workers AI endpoint routing for `music.*(api="cloudflare")` |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare music operations using `api="cloudflare"` |
 | `COHERE_API_KEY` | `text.generate(api="cohere")` |
+| `DEAPI_API_KEY` | DeAPI music operations |
 | `DEEPGRAM_API_KEY` | `audio.transcribe(api="deepgram")`, `audio.generate(api="deepgram")`, and synthesis alignment paths where used |
 | `DEEPGRAM_PROJECT_ID` | Optional Deepgram project filter for transcription cost lookup calls |
 | `DEEPINFRA_API_KEY` | DeepInfra text, audio generate/transcribe/voices, and image operations |
 | `DEEPSEEK_API_KEY` | `text.generate(api="deepseek")` |
-| `ELEVENLABS_API_KEY` | ElevenLabs audio generation, transcription, and voice helpers |
-| `FAL_KEY` | `text.generate(api="falai")`, `audio.transcribe(api="falai")`, image operations using `api="falai"`, and video operations using `api="falai"` |
+| `ELEVENLABS_API_KEY` | ElevenLabs audio generation, transcription, voice helpers, and music operations |
+| `FAL_KEY` | `text.generate(api="falai")`, `audio.transcribe(api="falai")`, image operations using `api="falai"`, video operations using `api="falai"`, and music operations using `api="falai"` |
 | `FIREWORKS_API_KEY` | Fireworks text, audio transcription, and image operations |
-| `GOOGLE_API_KEY` | Google text, audio generation/transcription, image operations, and Google Veo video operations |
+| `GENERATESONGS_API_KEY` | GenerateSongs music operations |
+| `GOOGLE_API_KEY` | Google text, audio generation/transcription, image operations, Google Veo video operations, and Google music operations |
 | `GROQ_API_KEY` | Groq text, audio generation/transcription, and image analysis |
 | `HEYGEN_KEY` | HeyGen v3 audio voices/speech, video/avatar/lip-sync/translation, media, webhook, and account operations |
 | `HUGGINGFACE_API_KEY` | Hugging Face text, audio transcription, image operations, and text-to-video |
+| `JEN_MUSIC_API_KEY` | Jen music operations |
+| `MINIMAX_API_KEY` | MiniMax music operations |
 | `MISTRAL_API_KEY` | Mistral text, audio generation/transcription/voices, and image analysis |
+| `MODELSLAB_API_KEY` | ModelsLab music operations |
+| `MUSICFUL_API_KEY` | Musicful music operations |
+| `MUSICFY_API_KEY` | Musicfy music operations |
+| `MUSICGPT_API_KEY` | MusicGPT music operations |
+| `NOVITA_API_KEY` | Novita music operations |
 | `OPENAI_API_KEY` | OpenAI text, audio, and image operations |
 | `OPENROUTER_API_KEY` | OpenRouter text, audio, image, and catalog/cost lookup paths |
+| `REPLICATE_API_TOKEN` | Replicate music operations |
+| `RUNWARE_API_KEY` | Runware music operations |
 | `RUNWAYML_API_SECRET` | Runway audio, image, video generation, avatar-video, ephemeral uploads, and custom avatar creation |
+| `SCENARIO_API_KEY` | Scenario music operations |
+| `SCENARIO_API_SECRET` | Scenario music operations |
+| `SEGMIND_API_KEY` | Segmind music operations |
 | `HEDRA_API_KEY` | Hedra video generation, video-to-video, motion-control, video-with-audio, and avatar operations |
 | `SPEECHMATICS_API_KEY` | `audio.transcribe(api="speechmatics")` |
-| `STABILITY_API_KEY` | Stability image operations and Stable Audio generation |
+| `SONAUTO_API_KEY` | Sonauto music operations |
+| `SOUNDVERSE_API_KEY` | Soundverse music operations |
+| `STABILITY_API_KEY` | Stability image operations, Stable Audio generation, and music operations |
+| `TOPMEDIAI_API_KEY` | TopMediai music operations |
 | `TOGETHER_API_KEY` | Together text, audio, image, and video operations |
+| `WAVESPEEDAI_API_KEY` | WaveSpeedAI music operations |
 | `XAI_API_KEY` | xAI text, audio, image, and video operations |
 
 Hedra credentials are read only when a Hedra video operation is selected. Runway
 uploads use the same `RUNWAYML_API_SECRET` as the generation and avatar
 endpoints.
+
+Music provider credentials are also read at provider-call time. Importing
+`easy_ai_clients.music` does not require credentials.
+
+Do not pass API keys or tokens as public music operation kwargs. The dispatcher
+rejects credential-like kwargs such as `api_key`, `token`, and `authorization`.
+
+Direct music URL downloads require `output_path`:
+
+```python
+from easy_ai_clients import music
+
+result = music.download(
+    "text_to_music",
+    audio_url="https://example.com/song.mp3",
+    output_path="song.mp3",
+    api="google",
+)
+```
+
+The wrapper does not save files implicitly.
+
+## Live Music Tests
+
+Normal tests do not call music provider APIs.
+
+The gated live music test module is skipped unless:
+
+```text
+EASY_AI_CLIENTS_LIVE_MUSIC=1
+```
+
+Paid live smoke calls also require:
+
+```text
+EASY_AI_CLIENTS_LIVE_MUSIC_PAID_CALL=1
+```
+
+Do not enable these variables for normal package validation.
 
 ## Missing Credentials
 

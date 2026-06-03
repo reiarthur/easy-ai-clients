@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "easy-ai-clients"
-version = "0.9.1"
-description = "Unified multi-provider Python client for text, image, audio, and video AI APIs."
+version = "0.10.0"
+description = "Unified multi-provider Python client for text, music, image, audio, and video AI APIs."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -16,6 +16,8 @@ keywords = [
   "ai",
   "llm",
   "text-generation",
+  "music-generation",
+  "song-generation",
   "tts",
   "stt",
   "speech-to-text",
@@ -114,6 +116,9 @@ include = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "live: tests that may call external provider APIs when explicitly enabled",
+]
 
 [tool.ruff]
 target-version = "py311"

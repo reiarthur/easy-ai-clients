@@ -7,7 +7,7 @@ by applications.
 ## Imports
 
 ```python
-from easy_ai_clients import account, audio, image, media, text, video, webhooks
+from easy_ai_clients import account, audio, image, media, music, text, video, webhooks
 ```
 
 Direct submodule imports are also supported:
@@ -18,6 +18,7 @@ from easy_ai_clients.audio import generate as speech_generate
 from easy_ai_clients.audio import prepare_transcription_audio
 from easy_ai_clients.audio import transcribe
 from easy_ai_clients.image import analyze
+from easy_ai_clients.music import text_to_music
 from easy_ai_clients.video import text_to_video
 ```
 
@@ -27,12 +28,20 @@ Every operation requires `api=`. Use the discovery helpers to inspect supported
 provider identifiers:
 
 ```python
-from easy_ai_clients import account, audio, image, media, text, video, webhooks
+from easy_ai_clients import account, audio, image, media, music, text, video, webhooks
 
 text.available_apis()
 audio.available_synthesize_apis()
 audio.available_transcribe_apis()
 audio.available_voice_apis()
+music.available_apis()
+music.available_text_to_music_apis()
+music.available_lyrics_to_song_apis()
+music.available_media_to_music_apis()
+music.available_audio_to_music_apis()
+music.available_edit_apis()
+music.available_stem_separation_apis()
+music.available_voice_conversion_apis()
 image.available_generate_apis()
 image.available_edit_apis()
 image.available_remix_apis()
@@ -269,6 +278,150 @@ Empty optional lists and dictionaries may be omitted from the returned bundle.
 Provider defaults avoid concrete language codes where possible. Deepgram sends
 `detect_language=true`, Speechmatics and Together send `language="auto"`, and
 ElevenLabs, Fal.ai, and Fireworks omit their language field by default.
+
+## Music Generation and Transformation
+
+Use the public package import:
+
+```python
+from easy_ai_clients import music
+```
+
+All music operations require a keyword-only `api` argument.
+
+```python
+music.text_to_music("Warm lo-fi loop.", api="stability")
+```
+
+If `api` is omitted, Python raises `TypeError`. If `api=""` or an unknown
+provider is supplied, generation-like operations return a normalized failure
+dictionary.
+
+### Music Operations
+
+```python
+music.generate("Upbeat 30-second product intro.", api="elevenlabs")
+music.text_to_music("Warm lo-fi loop.", api="stability")
+music.lyrics_to_song("Verse...\nChorus...", api="minimax")
+music.media_to_music("cover.png", prompt="Create a cinematic theme.", api="google")
+music.audio_to_music("reference.wav", prompt="Turn this into a pop track.", api="musicgpt")
+music.edit("song.mp3", prompt="Extend the ending by 20 seconds.", api="sonauto")
+music.stem_separation("song.mp3", api="elevenlabs")
+music.voice_conversion("vocal.wav", voice="voice-id", api="musicfy")
+```
+
+`music.generate(...)` delegates to `music.text_to_music(...)`.
+
+Provider-native kwargs are forwarded when a request can be assembled. Examples
+include `bpm`, `key`, `duration_seconds`, `seed`, `format`, `output_format`,
+`language`, `instrumental`, `loop`, `style`, and `mode`.
+
+Credential-like kwargs are rejected. Set provider credentials through
+environment variables instead.
+
+### Music Return Keys
+
+Music calls return dictionaries with stable public fields:
+
+```python
+{
+    "provider": "...",
+    "operation": "...",
+    "model": "...",
+    "status": "...",
+    "request_id": "...",
+    "audio_url": "...",
+    "music_url": "...",
+    "output_path": "...",
+    "audio": None,
+    "stems": None,
+    "cost_usd": 0.0,
+    "cost_currency": "USD",
+    "cost_is_estimated": False,
+    "cost_source": "unavailable",
+    "cost_details": {},
+    "provider_metadata": {},
+    "raw_response": {},
+    "warnings": [],
+}
+```
+
+`music_url` aliases `audio_url`. `stem_separation` uses `stems` as the main
+structured output.
+
+Secret-like fields, auth headers, and credential-bearing URL query strings are
+redacted before being exposed in normalized results.
+
+### Music Async Helpers
+
+Some providers submit async jobs.
+
+```python
+status = music.get_status("text_to_music", "request-id", api="falai")
+
+result = music.get_result(
+    "text_to_music",
+    "request-id",
+    output_path="song.mp3",
+    api="falai",
+)
+```
+
+Available helpers:
+
+```python
+music.get_status(operation, request_id, model=None, *, api, **kwargs)
+music.get_result(operation, request_id, output_path=None, model=None, *, api, **kwargs)
+music.download(
+    operation,
+    request_id=None,
+    audio_url=None,
+    output_path=None,
+    model=None,
+    *,
+    api,
+    **kwargs,
+)
+music.update_cost(operation, result, *, api)
+```
+
+When a provider module does not implement a helper, `get_status`,
+`get_result`, `download`, and `update_cost` may raise `NotImplementedError`.
+
+### Music Cost Behavior
+
+Cost fields are normalized. When cost is unavailable:
+
+```python
+{
+    "cost_usd": 0.0,
+    "cost_currency": "USD",
+    "cost_is_estimated": False,
+    "cost_source": "unavailable",
+    "cost_details": {},
+}
+```
+
+When a provider response includes cost, `cost_source` is `provider_response`.
+When a wrapper estimates from an official pricing table, `cost_source` is
+`official_pricing_table` and `cost_is_estimated` is `True`.
+
+### Music Direct Download
+
+Direct URL downloads require `output_path`.
+
+```python
+from easy_ai_clients import music
+
+result = music.download(
+    "text_to_music",
+    audio_url="https://example.com/song.mp3",
+    output_path="song.mp3",
+    api="google",
+)
+```
+
+The wrapper does not save files implicitly.
 
 ## Image Generation, Editing, and Remixing
 
@@ -550,7 +703,7 @@ Messages are sanitized before being exposed.
 ## Cost Updates
 
 ```python
-from easy_ai_clients import audio, image, text, video
+from easy_ai_clients import audio, image, music, text, video
 
 text_result = text.generate("ping", api="openrouter")
 text_result = text.update_cost(text_result, api="openrouter")
@@ -563,6 +716,9 @@ transcript = audio.update_cost("transcribe", transcript, api="deepgram")
 
 video_result = video.generate("a short product clip", api="google")
 print(video_result["cost_is_estimated"])
+
+music_result = music.text_to_music("a short product jingle", api="deapi")
+music_result = music.update_cost("text_to_music", music_result, api="deapi")
 ```
 
 Cost helpers raise `NotImplementedError` when the selected provider does not

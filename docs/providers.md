@@ -90,6 +90,71 @@ such as MP3, FLAC, or Ogg/Opus where the selected provider supports them.
 | [`together`](audio/transcribe/together.md) | `TOGETHER_API_KEY` | Whisper-large-v3 and Parakeet serverless models. |
 | [`xai`](audio/transcribe/xai.md) | `XAI_API_KEY` | xAI STT. |
 
+## Music - `easy_ai_clients.music`
+
+The music dispatcher exposes seven public operations. `music.generate(...)` is
+an alias for `music.text_to_music(...)`.
+
+Provider-specific pages live under
+`docs/music/<operation>/<provider>.md` and document credential names, endpoint
+flow notes, supported parameters, async behavior, download behavior, cost
+notes, and validation boundaries.
+
+### Operation matrix
+
+| Operation | Providers |
+| --- | --- |
+| `text_to_music` | [`google`](music/text_to_music/google.md), [`elevenlabs`](music/text_to_music/elevenlabs.md), [`stability`](music/text_to_music/stability.md), [`beatoven`](music/text_to_music/beatoven.md), [`musicfy`](music/text_to_music/musicfy.md), [`minimax`](music/text_to_music/minimax.md), [`sonauto`](music/text_to_music/sonauto.md), [`jen`](music/text_to_music/jen.md), [`musicgpt`](music/text_to_music/musicgpt.md), [`topmediai`](music/text_to_music/topmediai.md), [`modelslab`](music/text_to_music/modelslab.md), [`segmind`](music/text_to_music/segmind.md), [`falai`](music/text_to_music/falai.md), [`replicate`](music/text_to_music/replicate.md), [`generatesongs`](music/text_to_music/generatesongs.md), [`soundverse`](music/text_to_music/soundverse.md), [`scenario`](music/text_to_music/scenario.md), [`musicful`](music/text_to_music/musicful.md), [`deapi`](music/text_to_music/deapi.md), [`runware`](music/text_to_music/runware.md), [`novita`](music/text_to_music/novita.md), [`cloudflare`](music/text_to_music/cloudflare.md) |
+| `lyrics_to_song` | [`google`](music/lyrics_to_song/google.md), [`elevenlabs`](music/lyrics_to_song/elevenlabs.md), [`minimax`](music/lyrics_to_song/minimax.md), [`sonauto`](music/lyrics_to_song/sonauto.md), [`musicgpt`](music/lyrics_to_song/musicgpt.md), [`topmediai`](music/lyrics_to_song/topmediai.md), [`segmind`](music/lyrics_to_song/segmind.md), [`falai`](music/lyrics_to_song/falai.md), [`replicate`](music/lyrics_to_song/replicate.md), [`generatesongs`](music/lyrics_to_song/generatesongs.md), [`wavespeedai`](music/lyrics_to_song/wavespeedai.md), [`soundverse`](music/lyrics_to_song/soundverse.md), [`musicful`](music/lyrics_to_song/musicful.md), [`deapi`](music/lyrics_to_song/deapi.md), [`runware`](music/lyrics_to_song/runware.md), [`novita`](music/lyrics_to_song/novita.md), [`cloudflare`](music/lyrics_to_song/cloudflare.md) |
+| `media_to_music` | [`google`](music/media_to_music/google.md), [`elevenlabs`](music/media_to_music/elevenlabs.md), [`musicgpt`](music/media_to_music/musicgpt.md) |
+| `audio_to_music` | [`stability`](music/audio_to_music/stability.md), [`musicfy`](music/audio_to_music/musicfy.md), [`minimax`](music/audio_to_music/minimax.md), [`sonauto`](music/audio_to_music/sonauto.md), [`musicgpt`](music/audio_to_music/musicgpt.md), [`topmediai`](music/audio_to_music/topmediai.md), [`modelslab`](music/audio_to_music/modelslab.md), [`falai`](music/audio_to_music/falai.md), [`replicate`](music/audio_to_music/replicate.md), [`generatesongs`](music/audio_to_music/generatesongs.md), [`wavespeedai`](music/audio_to_music/wavespeedai.md), [`soundverse`](music/audio_to_music/soundverse.md), [`scenario`](music/audio_to_music/scenario.md), [`deapi`](music/audio_to_music/deapi.md), [`runware`](music/audio_to_music/runware.md) |
+| `edit` | [`stability`](music/edit/stability.md), [`sonauto`](music/edit/sonauto.md), [`jen`](music/edit/jen.md), [`musicgpt`](music/edit/musicgpt.md), [`topmediai`](music/edit/topmediai.md), [`falai`](music/edit/falai.md), [`replicate`](music/edit/replicate.md), [`soundverse`](music/edit/soundverse.md), [`scenario`](music/edit/scenario.md), [`runware`](music/edit/runware.md) |
+| `stem_separation` | [`elevenlabs`](music/stem_separation/elevenlabs.md), [`beatoven`](music/stem_separation/beatoven.md), [`soundverse`](music/stem_separation/soundverse.md) |
+| `voice_conversion` | [`musicfy`](music/voice_conversion/musicfy.md), [`musicgpt`](music/voice_conversion/musicgpt.md), [`topmediai`](music/voice_conversion/topmediai.md), [`generatesongs`](music/voice_conversion/generatesongs.md), [`soundverse`](music/voice_conversion/soundverse.md) |
+
+### Credential variables
+
+| Provider | Environment variable |
+| --- | --- |
+| `google` | `GOOGLE_API_KEY` |
+| `elevenlabs` | `ELEVENLABS_API_KEY` |
+| `stability` | `STABILITY_API_KEY` |
+| `beatoven` | `BEATOVEN_API_KEY` |
+| `musicfy` | `MUSICFY_API_KEY` |
+| `minimax` | `MINIMAX_API_KEY` |
+| `sonauto` | `SONAUTO_API_KEY` |
+| `jen` | `JEN_MUSIC_API_KEY` |
+| `musicgpt` | `MUSICGPT_API_KEY` |
+| `topmediai` | `TOPMEDIAI_API_KEY` |
+| `modelslab` | `MODELSLAB_API_KEY` |
+| `segmind` | `SEGMIND_API_KEY` |
+| `falai` | `FAL_KEY` |
+| `replicate` | `REPLICATE_API_TOKEN` |
+| `generatesongs` | `GENERATESONGS_API_KEY` |
+| `wavespeedai` | `WAVESPEEDAI_API_KEY` |
+| `soundverse` | `SOUNDVERSE_API_KEY` |
+| `scenario` | `SCENARIO_API_KEY`, `SCENARIO_API_SECRET` |
+| `musicful` | `MUSICFUL_API_KEY` |
+| `deapi` | `DEAPI_API_KEY` |
+| `runware` | `RUNWARE_API_KEY` |
+| `novita` | `NOVITA_API_KEY` |
+| `cloudflare` | `CLOUDFLARE_API_TOKEN` |
+
+Cloudflare Workers AI also uses `CLOUDFLARE_ACCOUNT_ID` for endpoint routing.
+
+### Public contract notes
+
+- `music.available_apis()` returns the same tuple as
+  `music.available_text_to_music_apis()`.
+- Public generation-like operations catch provider exceptions and return
+  normalized failures.
+- Async helpers may raise `NotImplementedError` when the selected provider
+  module does not implement the helper.
+- `parametric_generation` is not a public operation. Parameters such as `bpm`,
+  `key`, `duration_seconds`, `seed`, `format`, `style`, `loop`, and
+  `instrumental` are passed as provider-native keyword arguments when
+  supported.
+
 ## Image — `easy_ai_clients.image`
 
 ### `image.generate(...)` (text-to-image)

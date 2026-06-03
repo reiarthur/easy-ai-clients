@@ -1,6 +1,6 @@
 """easy-ai-clients: a unified Python client for multimodal multi-provider AI.
 
-Importing :mod:`easy_ai_clients` exposes four ergonomic submodules:
+Importing :mod:`easy_ai_clients` exposes ergonomic public submodules:
 
 - :mod:`easy_ai_clients.text` - text-in / text-out generation.
 - :mod:`easy_ai_clients.audio` - speech synthesis (`generate`) and speech
@@ -9,6 +9,8 @@ Importing :mod:`easy_ai_clients` exposes four ergonomic submodules:
   vision/multimodal analysis.
 - :mod:`easy_ai_clients.video` - text-to-video, image-to-video, motion control,
   lip-sync, agent video, and translation generation.
+- :mod:`easy_ai_clients.music` - music generation, text-to-music,
+  lyrics-to-song, audio-to-music, and stem separation.
 - :mod:`easy_ai_clients.media` - provider asset upload and deletion helpers.
 - :mod:`easy_ai_clients.webhooks` - provider webhook endpoint helpers.
 - :mod:`easy_ai_clients.account` - account and billing lookup helpers.
@@ -19,7 +21,7 @@ provider module shipped with the library.
 
 Example::
 
-    from easy_ai_clients import text, audio, image, video, media, webhooks, account
+    from easy_ai_clients import text, audio, image, video, music, media, webhooks, account
 
     text.generate("hello", api="openai")
     audio.generate("hello world", api="openai")
@@ -29,12 +31,23 @@ Example::
     image.generate("a corgi", api="openai")
     image.remix("studio ghibli", ["ref1.png", "ref2.png"], api="openai")
     video.generate("a corgi surfing", api="google")
+    music.generate("upbeat 30-second product intro", api="elevenlabs")
 """
 
 from __future__ import annotations
 
-from . import account, audio, image, media, text, video, webhooks
+from . import account, audio, image, media, music, text, video, webhooks
 
-__all__ = ["text", "audio", "image", "video", "media", "webhooks", "account", "__version__"]
+__all__ = [
+    "text",
+    "audio",
+    "image",
+    "video",
+    "music",
+    "media",
+    "webhooks",
+    "account",
+    "__version__",
+]
 
-__version__ = "0.9.1"
+__version__ = "0.10.0"
