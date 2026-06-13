@@ -1,0 +1,38 @@
+STYLE_PRESET = {'id': 'eurodance_europop',
+ 'description': {'pt': 'Eurodance e Europop com kick 4/4, baixo sintetico em oitavas, hooks brilhantes, versos falados ou rap, refrao grande e brilho noturno.',
+                 'en': 'Eurodance and Europop with a 4/4 kick, octave synth bass, bright hooks, spoken or rap-like verses, a big chorus, and glossy nightlife energy.'},
+ 'style_family': 'eurodance europop',
+ 'style_prompt': 'Eurodance and Europop with 4/4 club kick, octave synth bass, bright synth hooks, '
+                 'spoken or rap-like verse contrast, big sung chorus, and glossy nightlife '
+                 'euphoria.',
+ 'default_language': 'en-US',
+ 'default_vocal': {'description': 'spoken or rap-style verse voice paired with a big sung chorus '
+                                  'lead'},
+ 'tempo_bpm': 128,
+ 'key_scale': 'A minor',
+ 'time_signature': 4,
+ 'duration_seconds': 60,
+ 'generation_controls': {'instrumental': False},
+ 'instrumentation': ['four-on-the-floor kick',
+                     'clap or snare',
+                     'hi-hats',
+                     'octave synth bass',
+                     'bright synth lead',
+                     'supersaw stabs',
+                     'vocoder group chants'],
+ 'arrangement': ['intro riff',
+                 'verse or rap',
+                 'pre-chorus',
+                 'chorus',
+                 'instrumental hook or drop',
+                 'breakdown and final chorus'],
+ 'energy': 'high',
+ 'mood': ['euphoric', 'glossy', 'direct', 'nightlife-focused'],
+ 'mix_target': 'bright club and radio loudness with clear kick, bass, synth hook, and chorus',
+ 'negative_traits': ['loose timing',
+                     'muddy low end',
+                     'over-complex harmony',
+                     'subtle acoustic realism',
+                     'weak chorus']}
+
+

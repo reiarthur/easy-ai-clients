@@ -20,7 +20,7 @@ Diffusion.
 | deepinfra | audio | transcribe | OpenAI-compatible STT gateway | current | unavailable | yes |
 | deepinfra | audio | voices | voice catalog surface | current | not applicable | yes |
 | deepinfra | image | generate/edit/remix/analyze | image and vision APIs | current | unavailable | yes |
-| elevenlabs | audio | generate | TTS, sound generation, music compose | current | headers/units only for non-speech | yes |
+| elevenlabs | audio | generate | TTS and sound generation | current | headers/units only for non-speech | yes |
 | elevenlabs | audio | voices | voices/design/clone APIs | current | not applicable | yes |
 | huggingface | audio | transcribe | Inference Providers ASR | current | unavailable | yes |
 | huggingface | image | generate/edit/remix/analyze | Inference Providers image tasks | current | unavailable | yes |
@@ -35,6 +35,10 @@ Diffusion.
 | xai | video | text/image/video | `/v1/videos/generations`, `/v1/videos/edits` | current | official per-second table | yes |
 | stability | audio | generate | Stable Audio text-to-audio | current | official per-generation table where known | yes |
 | stability | video | video generation | Stable Video Diffusion | deprecated 2025-07-24 | excluded | no |
+| deapi | music | generate | `/api/v1/client/txt2music` | current | price endpoint or status response | yes |
+| elevenlabs | music | generate | `/v1/music` | current | local validated estimate | yes |
+| google | music | generate | Lyria `generateContent` | preview | local validated table | yes |
+| runware | music | generate | `/v1` audio inference | current | provider response when available | yes |
 | anthropic | text | list_models | model catalog endpoint | current | not applicable | already implemented |
 | cohere | text | list_models | model catalog endpoint | current | not applicable | already implemented |
 | deepseek | text | list_models | OpenAI-compatible models endpoint | current | not applicable | already implemented |

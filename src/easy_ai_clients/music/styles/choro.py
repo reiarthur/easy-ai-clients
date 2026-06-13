@@ -1,0 +1,37 @@
+STYLE_PRESET = {'id': 'choro',
+ 'description': {'pt': 'Choro brasileiro com sincopa acustica em 2/4, flauta ou bandolim solista, cavaquinho, violao de sete cordas, pandeiro e interacao virtuosa.',
+                 'en': 'Brazilian choro with acoustic 2/4 syncopation, flute or bandolim lead, cavaquinho, seven-string guitar, pandeiro, and virtuosic interplay.'},
+ 'style_family': 'Brazilian choro',
+ 'style_prompt': 'Brazilian choro with 2/4 acoustic syncopation, flute or bandolim lead, '
+                 'cavaquinho comping, seven-string guitar counterpoint, pandeiro pulse, and '
+                 'elegant virtuoso interplay.',
+ 'default_language': 'pt-BR',
+ 'default_vocal': {'description': 'light sung choro vocal only when needed, with graceful melodic '
+                                  'phrasing'},
+ 'tempo_bpm': 132,
+ 'key_scale': 'C major',
+ 'time_signature': 2,
+ 'duration_seconds': 60,
+ 'generation_controls': {'instrumental': True},
+ 'instrumentation': ['flute',
+                     'bandolim',
+                     'cavaquinho',
+                     'seven-string guitar',
+                     'six-string guitar',
+                     'pandeiro',
+                     'clarinet'],
+ 'arrangement': ['ornamented lead theme',
+                 'cavaquinho comping',
+                 'seven-string baixarias',
+                 'pandeiro pulse',
+                 'AABBACCA or ABACA variation'],
+ 'energy': 'high',
+ 'mood': ['virtuosic', 'conversational', 'elegant', 'playful', 'nostalgic'],
+ 'mix_target': 'natural acoustic roda sound with clear lead melody and counterpoint',
+ 'negative_traits': ['jazz soloing over static changes',
+                     'heavy drums',
+                     'synth-pop texture',
+                     'flat melody',
+                     'overcompressed acoustic mix']}
+
+

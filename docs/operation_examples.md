@@ -1,8 +1,8 @@
 # Operation Examples
 
 This page gives copyable examples for every public category and subcategory.
-Provider-specific pages in `docs/<category>/<subcategory>/<provider>.md`
-document defaults, endpoint notes, cost behavior, and limitations.
+Provider-specific pages under `docs/` document defaults, endpoint notes, cost
+behavior, and limitations.
 
 All dispatchers require `api=...`. Extra keyword arguments are provider-native
 and are forwarded whenever the wrapper can assemble a valid request.
@@ -27,8 +27,8 @@ models = text.list_models(api="openai")
 ## Audio generation
 
 `audio.generate` covers speech synthesis and provider-specific non-speech audio
-where implemented, such as ElevenLabs sound effects/music, Runway sound
-generation, and Stable Audio.
+where implemented, such as ElevenLabs sound effects, Runway sound generation,
+and Stable Audio.
 
 ```python
 from easy_ai_clients import audio
@@ -40,13 +40,6 @@ speech = audio.generate(
     voice="alloy",
 )
 speech["audio"].export("speech.mp3", format="mp3")
-
-music = audio.generate(
-    "Short upbeat product intro, no vocals.",
-    api="elevenlabs",
-    audio_type="music",
-)
-music["audio"].export("intro.mp3", format="mp3")
 ```
 
 ## Audio voices
@@ -88,85 +81,6 @@ print(deepgram["text"])
 print(openai["cost_source"])
 ```
 
-## Music
-
-```python
-from easy_ai_clients import music
-
-track = music.text_to_music(
-    "Warm lo-fi loop with soft drums.",
-    api="stability",
-    duration_seconds=30,
-    output_format="mp3",
-)
-
-alias_track = music.generate(
-    "Upbeat 30-second product intro.",
-    api="elevenlabs",
-)
-
-song = music.lyrics_to_song(
-    "[Verse]\nWalking under city lights\n[Chorus]\nWe keep moving on",
-    prompt="Modern pop ballad with warm vocals.",
-    api="minimax",
-)
-
-visual_score = music.media_to_music(
-    "cover.png",
-    prompt="Create a cinematic orchestral theme.",
-    api="google",
-)
-
-remix = music.audio_to_music(
-    "reference.wav",
-    prompt="Turn this into a polished pop track.",
-    api="musicgpt",
-)
-
-extended = music.edit(
-    "song.mp3",
-    prompt="Extend the ending by 20 seconds.",
-    api="sonauto",
-)
-
-stems = music.stem_separation(
-    "song.mp3",
-    api="elevenlabs",
-)
-
-converted = music.voice_conversion(
-    "vocal.wav",
-    voice="voice-id",
-    api="musicfy",
-)
-```
-
-`music.generate(...)` is an alias for `music.text_to_music(...)`.
-
-## Music async helpers and download
-
-```python
-from easy_ai_clients import music
-
-status = music.get_status("text_to_music", "request-id", api="falai")
-
-result = music.get_result(
-    "text_to_music",
-    "request-id",
-    output_path="song.mp3",
-    api="falai",
-)
-
-downloaded = music.download(
-    "text_to_music",
-    audio_url="https://example.com/song.mp3",
-    output_path="song.mp3",
-    api="google",
-)
-```
-
-Direct music downloads require `output_path`.
-
 ## Images
 
 ```python
@@ -199,6 +113,33 @@ analysis = image.analyze(
 
 Image generation/edit/remix results include both `cust_usd` and `cost_usd`.
 New code should prefer `cost_usd`.
+
+## Music generation
+
+```python
+from easy_ai_clients import music
+
+generation = music.generate(
+    lyrics="[Verse]\nThe morning opens wide\n[Chorus]\nWe keep the light alive",
+    api="runware",
+    model="ace_step_v1_5_xl_turbo",
+    style="rock",
+)
+
+status = music.get_status(generation)
+result = music.download_result(status)
+
+options = music.get_generation_options(api="runware")
+styles = music.get_style_presets(fields=["id", "description"], styles=["rock"])
+lyrics_prompt = music.build_lyrics_prompt(
+    60,
+    reference_text="Brazilian Portuguese pop rock with a hopeful chorus.",
+)
+```
+
+Music results keep only the safe normalized generation fields. Raw provider
+responses, auth headers, credentials, provider audio URLs, and large audio
+payloads are not returned.
 
 ## Video generation
 

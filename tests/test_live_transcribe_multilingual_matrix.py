@@ -27,17 +27,27 @@ from typing import Any
 import pytest
 from dotenv import load_dotenv
 
+pytestmark = pytest.mark.live
+
 ROOT = Path(__file__).resolve().parents[1]
+LOCAL_ENV_FILE = ROOT.parent / ".env-easy-ai-clients"
 ARCHIVE_PATH = ROOT / "tests" / "fixtures" / "transcribe_multilingual_audios.tar.xz"
 DOC_PATH = ROOT / "docs" / "audio" / "transcribe" / "live_multilingual_benchmark.md"
 
 LIVE_ENV_VAR = "EASY_AI_CLIENTS_LIVE_TRANSCRIBE_MULTILINGUAL"
+ENV_FILE_ENV = "EASY_AI_CLIENTS_ENV_FILE"
 FILTER_ENV_VARS = {
     "providers": "EASY_AI_CLIENTS_BENCHMARK_PROVIDERS",
     "models": "EASY_AI_CLIENTS_BENCHMARK_MODELS",
     "audios": "EASY_AI_CLIENTS_BENCHMARK_AUDIOS",
     "modes": "EASY_AI_CLIENTS_BENCHMARK_MODES",
 }
+
+
+def _load_live_env():
+    if os.getenv(ENV_FILE_ENV):
+        load_dotenv(os.environ[ENV_FILE_ENV], override=False)
+    load_dotenv(LOCAL_ENV_FILE, override=False)
 
 PROVIDER_ENV = {
     "deepgram": "DEEPGRAM_API_KEY",
@@ -1237,7 +1247,7 @@ def _write_markdown_doc(
         "",
         "## Methodology",
         "",
-        "This benchmark runs real paid transcription calls sequentially. Each provider/model/audio pair is tested in automatic language detection mode and, when supported, in explicit language mode. The runner loads root `.env` with `python-dotenv` and skips providers whose credential is absent.",
+        "This benchmark runs real paid transcription calls sequentially. Each provider/model/audio pair is tested in automatic language detection mode and, when supported, in explicit language mode. The runner loads credentials from `EASY_AI_CLIENTS_ENV_FILE` when set, otherwise from `../.env-easy-ai-clients` when present, and skips providers whose credential is absent.",
         "",
         "Text metrics are computed without translating text. The runner applies Unicode NFKC normalization, case folding, punctuation/symbol removal, whitespace collapsing, and then computes WER from whitespace-delimited tokens. It also computes CER and normalized character similarity from punctuation-free, whitespace-free characters. For Mandarin, character similarity is treated as the primary quality signal because whitespace tokenization is weak.",
         "",
@@ -1657,10 +1667,11 @@ def _write_markdown_doc(
             "pytest tests/test_live_transcribe_multilingual_matrix.py -s",
             "```",
             "",
-            "The runner requires provider credentials in root `.env`. Do not commit "
-            "secrets. If credits or model access are added later, rerun only the "
-            "affected provider/model/audio/mode subset with the filters above. Omit "
-            "`--doc` only when intentionally replacing this complete benchmark report.",
+            "The runner requires provider credentials in the process environment, "
+            "`EASY_AI_CLIENTS_ENV_FILE`, or `../.env-easy-ai-clients`. Do not commit "
+            "secrets. If credits or model access are added later, rerun only the affected "
+            "provider/model/audio/mode subset with the filters above. Omit `--doc` only "
+            "when intentionally replacing this complete benchmark report.",
             "",
         ]
     )
@@ -1703,7 +1714,7 @@ def run_benchmark(args) -> list[dict[str, Any]]:
     global DOC_PATH
     DOC_PATH = args.doc
 
-    load_dotenv(ROOT / ".env", override=True)
+    _load_live_env()
     _load_local_package()
     provider_models = _all_provider_models()
     filters = _merge_cli_and_env_filters(args)

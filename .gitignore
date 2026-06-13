@@ -1,10 +1,12 @@
-# Credentials and environment
-.env
-.env.*
-!.env.example
+# Local Python environments
 .venv
 .venv-*
 venv/
+
+# Local secrets
+.env
+.env.*
+!.env.example
 
 # Build and distribution
 build/
@@ -29,8 +31,8 @@ htmlcov/
 tests/artefatos_testes/
 /audio.mp3
 /audio.txt
+docs/audio/transcribe/live_multilingual_benchmark.md
 docs/audio/transcribe/live_multilingual_benchmark_*.md
-video_options/
 
 # AI development tooling (internal, not part of the library)
 .claude/
@@ -38,8 +40,10 @@ video_options/
 .codex
 CLAUDE.md
 AGENTS.md
-PROJECT_CONTEXT.md
 instrucoues_criar_api.txt
+TEMP_PROMPT*.md
+PROMPT_*.md
+prompt_atualizar_lib.md
 
 # IDE
 .idea/

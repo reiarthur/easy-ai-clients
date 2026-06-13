@@ -16,9 +16,10 @@ pip install -e ".[dev]"
 Set the environment variables of the providers you intend to exercise (only
 those you actually need). See [`.env.example`](.env.example) for the
 recognised names. Use [`python-dotenv`](https://pypi.org/project/python-dotenv/)
-or your own loader when local development depends on a `.env` file. Some
-adapters also read `.env` from the current working directory, but tests and
-scripts should load secrets explicitly when they require them.
+or your own loader when local development depends on a dotenv file. Keep real
+secret files outside the repository. The gated live tests load
+`EASY_AI_CLIENTS_ENV_FILE` when set, otherwise they look for
+`../.env-easy-ai-clients` when present.
 
 ## Running tests
 
@@ -36,9 +37,12 @@ pytest tests/test_imports.py -v
 ```
 
 Paid integration smoke tests are gated by explicit environment variables and
-provider credentials. For video, set `EASY_AI_CLIENTS_LIVE_VIDEO=1` plus the
-credentials for the providers you want to exercise. The current video smoke
-budget is guarded at US$ 1.00.
+provider credentials. They are also marked with `pytest.mark.live`, so
+`pytest -m "not live"` excludes them. For video, set
+`EASY_AI_CLIENTS_LIVE_VIDEO=1` plus the credentials for the providers you want
+to exercise. For music, set `EASY_AI_CLIENTS_LIVE_MUSIC=1` and
+`EASY_AI_CLIENTS_LIVE_MUSIC_API=<provider>`. The current video smoke budget is
+guarded at US$ 1.00.
 
 ## Linting
 
@@ -56,7 +60,7 @@ ruff check --fix src tests
 
 ```
 src/easy_ai_clients/
-├── __init__.py            # Top-level package: re-exports text, audio, image, video, __version__
+├── __init__.py            # Top-level package exports and version
 ├── py.typed
 ├── text/
 │   ├── __init__.py        # Text generate dispatcher
@@ -74,7 +78,11 @@ src/easy_ai_clients/
     ├── _edit/...
     ├── _remix/...
     └── _analyze/...
-└── video/
+├── music/
+│   ├── __init__.py        # Music generation dispatcher and helpers
+│   ├── _apis/             # PRIVATE validated music providers
+│   └── styles/            # Packaged local style presets
+├── video/
     ├── __init__.py        # Video generation dispatchers and async helpers
     ├── _shared/           # PRIVATE shared video helpers
     ├── _text_to_video/...
@@ -82,28 +90,35 @@ src/easy_ai_clients/
     ├── _motion_control/...
     ├── _image_lipsync/...
     └── _video_lipsync/...
+└── media/, webhooks/, account/
+    └── _apis/             # PRIVATE provider helper modules
 ```
 
 Anything starting with `_` is internal. The only stable surface is what is
 explicitly exported from `easy_ai_clients.text`, `easy_ai_clients.audio`,
-`easy_ai_clients.image`, and `easy_ai_clients.video`.
+`easy_ai_clients.image`, `easy_ai_clients.music`, `easy_ai_clients.video`,
+`easy_ai_clients.media`, `easy_ai_clients.webhooks`, and
+`easy_ai_clients.account`.
 
 ## Adding a new provider
 
 1. Pick a short, lowercase identifier matching the file name (e.g. `groq`).
 2. Drop the new module under the appropriate `_apis/` directory and expose a
    public function with the operation's standard signature
-   (`generate`, `edit`, `remix`, `analyze`, `transcribe`, or a video operation).
+   (`generate`, `edit`, `remix`, `analyze`, `transcribe`, a music operation, or
+   a video operation).
 3. Register the new identifier in the dispatcher's tuple inside the operation
    `__init__.py` (e.g. `_AVAILABLE_APIS` for `text`, `_GENERATE_APIS` for
    `image.generate`).
 4. Add the credential variable to `.env.example` and document the provider in
    [`docs/providers.md`](docs/providers.md).
-5. Update `CHANGELOG.md` under a new `[Unreleased]` section.
+5. Update `CHANGELOG.md` under a new `[Unreleased]` section for unreleased
+   work, or under the target version section during release preparation.
 
 ## Building the package
 
 ```bash
+rm -rf dist build
 python -m build
 twine check dist/*
 ```
@@ -113,6 +128,7 @@ Both must pass before publishing.
 ## Publishing to PyPI
 
 ```bash
+rm -rf dist build
 python -m build
 TWINE_USERNAME=__token__ TWINE_PASSWORD=<project-token> twine upload dist/*
 ```

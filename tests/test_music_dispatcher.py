@@ -1,302 +1,474 @@
-from types import SimpleNamespace
+"""Music dispatcher tests that do not call provider APIs."""
+
+from __future__ import annotations
+
+import base64
+import importlib
+import inspect
 
 import pytest
 
-import easy_ai_clients
-from easy_ai_clients import music
-
-EXPECTED_APIS = {
-    "text_to_music": (
-        "google", "elevenlabs", "stability", "beatoven", "musicfy", "minimax",
-        "sonauto", "jen", "musicgpt", "topmediai", "modelslab", "segmind",
-        "falai", "replicate", "generatesongs", "soundverse", "scenario",
-        "musicful", "deapi", "runware", "novita", "cloudflare",
-    ),
-    "lyrics_to_song": (
-        "google", "elevenlabs", "minimax", "sonauto", "musicgpt", "topmediai",
-        "segmind", "falai", "replicate", "generatesongs", "wavespeedai",
-        "soundverse", "musicful", "deapi", "runware", "novita", "cloudflare",
-    ),
-    "media_to_music": ("google", "elevenlabs", "musicgpt"),
-    "audio_to_music": (
-        "stability", "musicfy", "minimax", "sonauto", "musicgpt", "topmediai",
-        "modelslab", "falai", "replicate", "generatesongs", "wavespeedai",
-        "soundverse", "scenario", "deapi", "runware",
-    ),
-    "edit": (
-        "stability", "sonauto", "jen", "musicgpt", "topmediai", "falai",
-        "replicate", "soundverse", "scenario", "runware",
-    ),
-    "stem_separation": ("elevenlabs", "beatoven", "soundverse"),
-    "voice_conversion": (
-        "musicfy", "musicgpt", "topmediai", "generatesongs", "soundverse",
-    ),
-}
-
-PROVIDER_FUNCTIONS = {
-    "text_to_music": "generate_text_to_music",
-    "lyrics_to_song": "generate_lyrics_to_song",
-    "media_to_music": "generate_media_to_music",
-    "audio_to_music": "generate_audio_to_music",
-    "edit": "edit_music",
-    "stem_separation": "separate_stems",
-    "voice_conversion": "convert_voice",
+TEST_LYRICS = "Minha letra tem mais de dez caracteres para dispatch local."
+PUBLIC_GENERATION_KEYS = {
+    "provider",
+    "model",
+    "model_key",
+    "status",
+    "request_id",
+    "output_path",
+    "cost_usd",
+    "cost_currency",
+    "cost_source",
+    "cost_is_estimated",
+    "cost_details",
+    "metadata",
 }
 
 
-def _call_generation(operation, api, model="model-a"):
-    if operation == "text_to_music":
-        return music.text_to_music("calm piano loop", model=model, api=api, seed=11)
-    if operation == "lyrics_to_song":
-        return music.lyrics_to_song(
-            "[Verse]\nHello world",
-            prompt="indie pop",
-            model=model,
-            api=api,
-            seed=11,
-        )
-    if operation == "media_to_music":
-        return music.media_to_music(
-            "https://example.com/scene.png",
-            prompt="cinematic",
-            model=model,
-            api=api,
-            seed=11,
-        )
-    if operation == "audio_to_music":
-        return music.audio_to_music(
-            "https://example.com/reference.wav",
-            prompt="remix",
-            model=model,
-            api=api,
-            seed=11,
-        )
-    if operation == "edit":
-        return music.edit(
-            "https://example.com/source.wav",
-            prompt="extend",
-            model=model,
-            api=api,
-            seed=11,
-        )
-    if operation == "stem_separation":
-        return music.stem_separation(
-            "https://example.com/song.mp3",
-            model=model,
-            api=api,
-            stem_count=4,
-        )
-    if operation == "voice_conversion":
-        return music.voice_conversion(
-            "https://example.com/vocal.wav",
-            voice="voice-1",
-            prompt="clean vocal",
-            model=model,
-            api=api,
-            seed=11,
-        )
-    raise AssertionError(f"Unsupported test operation: {operation}")
+class FakeProviderModule:
+    def __init__(self, provider="deapi"):
+        self.provider = provider
+        self.request = None
+        self.status_generation = None
+        self.download_generation = None
 
-
-def _provider_response(operation):
-    if operation == "stem_separation":
+    def generate(self, **kwargs):
+        self.request = kwargs
         return {
-            "status": "completed",
-            "stems": {"vocals": "https://cdn.example.com/vocals.wav"},
+            "provider": self.provider,
+            "model": kwargs["model"],
+            "model_key": "placeholder",
+            "status": "submitted",
+            "request_id": "req_123",
+            "output_path": None,
+            "cost_usd": 0.0,
+            "cost_currency": "USD",
+            "cost_source": "unavailable",
+            "cost_is_estimated": False,
+            "cost_details": {},
+            "metadata": {},
         }
-    return {
-        "status": "completed",
-        "audio_url": f"https://cdn.example.com/{operation}.mp3",
-    }
+
+    def get_status(self, generation):
+        self.status_generation = generation
+        generation["status"] = "running"
+        return generation
+
+    def download_result(self, generation):
+        self.download_generation = generation
+        generation["status"] = "completed"
+        generation["output_path"] = "outputs/music/temp/deapi/demo.mp3"
+        return generation
 
 
-def _patch_generation_provider(monkeypatch, operation, provider):
-    calls = []
-    function_name = PROVIDER_FUNCTIONS[operation]
+def provider_import(fake_module, provider="deapi"):
+    real_import_module = importlib.import_module
 
-    def provider_function(*args, **kwargs):
-        calls.append({"args": args, "kwargs": kwargs})
-        return _provider_response(operation)
+    def fake_import_module(module_name, package=None):
+        if module_name == f"._apis.{provider}" and package == "easy_ai_clients.music":
+            return fake_module
+        return real_import_module(module_name, package)
 
-    module = SimpleNamespace(**{function_name: provider_function})
-
-    def load_provider_module(actual_operation, actual_provider):
-        assert actual_operation == operation
-        assert actual_provider == provider
-        return module
-
-    monkeypatch.setattr(music, "_load_provider_module", load_provider_module)
-    return calls
+    return fake_import_module
 
 
-def test_generate_aliases_text_to_music():
-    assert music.generate is music.text_to_music
+def test_public_signature_uses_api_keyword():
+    from easy_ai_clients import music
+
+    signature = inspect.signature(music.generate)
+
+    assert str(signature) == "(lyrics, model=None, *, api, style=None, prompt=None, **kwargs)"
 
 
-def test_top_level_package_exports_music_module():
-    assert easy_ai_clients.music is music
-    assert "music" in easy_ai_clients.__all__
+def test_public_exports_are_exact():
+    from easy_ai_clients import music
+
+    assert music.__all__ == [
+        "available_apis",
+        "build_lyrics_prompt",
+        "download_result",
+        "generate",
+        "get_generation_options",
+        "get_status",
+        "get_style_presets",
+    ]
 
 
-@pytest.mark.parametrize("operation", tuple(EXPECTED_APIS))
-def test_public_operations_route_to_provider_module_function(monkeypatch, operation):
-    provider = EXPECTED_APIS[operation][0]
-    calls = _patch_generation_provider(monkeypatch, operation, provider)
+def test_available_apis_returns_validated_provider_tuple():
+    from easy_ai_clients import music
 
-    result = _call_generation(operation, api=provider)
-
-    assert len(calls) == 1
-    assert result["provider"] == provider
-    assert result["operation"] == operation
-    assert result["model"] == "model-a"
-    assert result["status"] == "completed"
+    assert music.available_apis() == ("deapi", "elevenlabs", "google", "runware")
 
 
-@pytest.mark.parametrize("operation", tuple(EXPECTED_APIS))
-def test_unknown_api_returns_normalized_failure_for_generation_calls(operation):
-    result = _call_generation(operation, api="unknown-provider")
+def test_generate_rejects_unknown_style():
+    from easy_ai_clients import music
 
-    assert result["provider"] == "unknown-provider"
-    assert result["operation"] == operation
-    assert result["status"] == "failed"
-    assert "does not support" in result["error"]["message"]
+    with pytest.raises(ValueError, match="Unknown style"):
+        music.generate(
+            lyrics=TEST_LYRICS,
+            model="AceStep_1_5_Turbo",
+            api="deapi",
+            style="Hip Hop Rap Trap",
+        )
 
 
-@pytest.mark.parametrize("operation", tuple(EXPECTED_APIS))
-def test_empty_api_returns_normalized_failure_for_generation_calls(operation):
-    result = _call_generation(operation, api="")
+def test_generate_rejects_unknown_api():
+    from easy_ai_clients import music
 
-    assert result["provider"] == ""
-    assert result["operation"] == operation
-    assert result["status"] == "failed"
-    assert "non-empty provider identifier" in result["error"]["message"]
+    with pytest.raises(ValueError, match="Unknown music API 'unknown_provider'"):
+        music.generate(
+            lyrics=TEST_LYRICS,
+            model="unknown_model",
+            api="unknown_provider",
+            style="sertanejo",
+        )
+
+
+def test_generate_rejects_empty_api():
+    from easy_ai_clients import music
+
+    with pytest.raises(ValueError, match="requires api"):
+        music.generate(
+            lyrics=TEST_LYRICS,
+            model="AceStep_1_5_Turbo",
+            api="",
+            style="sertanejo",
+        )
+
+
+def test_generate_dispatches_normalized_request(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = FakeProviderModule()
+
+    monkeypatch.setattr(
+        _router.importlib,
+        "import_module",
+        provider_import(fake_module),
+    )
+    result = music.generate(
+        lyrics=TEST_LYRICS,
+        model="ace_step_v1_5_turbo",
+        api="deapi",
+        style="sertanejo",
+        duration=45,
+    )
+
+    assert result["model_key"] == "ace_step_v1_5_turbo"
+    assert fake_module.request["lyrics"] == TEST_LYRICS
+    assert fake_module.request["model"] == "AceStep_1_5_Turbo"
+    assert fake_module.request["duration"] == 45
+    assert "negative_prompt" not in fake_module.request
+    assert "Brazilian sertanejo" in fake_module.request["prompt"]
+
+
+def test_generate_uses_validated_default_model(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = FakeProviderModule()
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module))
+    result = music.generate(
+        lyrics=TEST_LYRICS,
+        api="deapi",
+        prompt="modern romantic sertanejo",
+    )
+
+    assert fake_module.request["model"] == "AceStep_1_5_Turbo"
+    assert result["model_key"] == "ace_step_v1_5_turbo"
 
 
 @pytest.mark.parametrize(
-    "call",
-    (
-        lambda: music.text_to_music("prompt"),
-        lambda: music.generate("prompt"),
-        lambda: music.lyrics_to_song("lyrics"),
-        lambda: music.media_to_music("https://example.com/image.png"),
-        lambda: music.audio_to_music("https://example.com/audio.wav"),
-        lambda: music.edit("https://example.com/audio.wav"),
-        lambda: music.stem_separation("https://example.com/audio.wav"),
-        lambda: music.voice_conversion("https://example.com/audio.wav"),
-        lambda: music.get_status("text_to_music", "request-1"),
-        lambda: music.get_result("text_to_music", "request-1"),
-        lambda: music.download("text_to_music", request_id="request-1"),
-        lambda: music.update_cost("text_to_music", {}),
-    ),
+    ("provider", "native_model", "model_key"),
+    [
+        ("deapi", "AceStep_1_5_Turbo", "ace_step_v1_5_turbo"),
+        ("elevenlabs", "music_v1", "eleven_music"),
+        ("google", "lyria-3-clip-preview", "lyria_3_clip_preview"),
+        ("runware", "runware:ace-step@v1.5-xl-turbo", "ace_step_v1_5_xl_turbo"),
+    ],
 )
-def test_missing_required_keyword_only_api_raises_type_error(call):
-    with pytest.raises(TypeError):
-        call()
+def test_generate_uses_validated_default_models_for_all_providers(
+    monkeypatch,
+    provider,
+    native_model,
+    model_key,
+):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
 
+    fake_module = FakeProviderModule(provider)
 
-def test_available_api_helpers_return_exact_tuples():
-    assert music.available_apis() == EXPECTED_APIS["text_to_music"]
-    assert music.available_text_to_music_apis() == EXPECTED_APIS["text_to_music"]
-    assert music.available_lyrics_to_song_apis() == EXPECTED_APIS["lyrics_to_song"]
-    assert music.available_media_to_music_apis() == EXPECTED_APIS["media_to_music"]
-    assert music.available_audio_to_music_apis() == EXPECTED_APIS["audio_to_music"]
-    assert music.available_edit_apis() == EXPECTED_APIS["edit"]
-    assert music.available_stem_separation_apis() == EXPECTED_APIS["stem_separation"]
-    assert music.available_voice_conversion_apis() == EXPECTED_APIS["voice_conversion"]
-
-
-def test_parametric_generation_is_not_exposed_as_operation():
-    assert not hasattr(music, "parametric_generation")
-    assert "parametric_generation" not in music.__all__
-    assert "parametric_generation" not in music._OPERATIONS
-
-
-def test_async_helpers_route_to_provider_helper_functions(monkeypatch):
-    calls = []
-
-    def get_generation_status(*args, **kwargs):
-        calls.append(("status", args, kwargs))
-        return {"status": "submitted", "request_id": args[0]}
-
-    def get_generation_result(*args, **kwargs):
-        calls.append(("result", args, kwargs))
-        return {
-            "status": "completed",
-            "request_id": args[0],
-            "audio_url": "https://cdn.example.com/result.mp3",
-        }
-
-    def download_generation(*args, **kwargs):
-        calls.append(("download", args, kwargs))
-        return {
-            "status": "completed",
-            "request_id": args[0],
-            "audio_url": "https://cdn.example.com/download.mp3",
-        }
-
-    module = SimpleNamespace(
-        get_generation_status=get_generation_status,
-        get_generation_result=get_generation_result,
-        download_generation=download_generation,
-    )
-
-    def load_provider_module(operation, provider):
-        assert operation == "text_to_music"
-        assert provider == "falai"
-        return module
-
-    monkeypatch.setattr(music, "_load_provider_module", load_provider_module)
-
-    status = music.get_status(
-        "text_to_music",
-        "request-1",
-        model="model-a",
-        api="falai",
-        native_option="status",
-    )
-    result = music.get_result(
-        "text_to_music",
-        "request-2",
-        output_path="song.mp3",
-        model="model-a",
-        api="falai",
-        native_option="result",
-    )
-    downloaded = music.download(
-        "text_to_music",
-        request_id="request-3",
-        output_path="download.mp3",
-        model="model-a",
-        api="falai",
-        native_option="download",
-    )
-
-    assert [call[0] for call in calls] == ["status", "result", "download"]
-    assert calls[0][1] == ("request-1",)
-    assert calls[0][2] == {"native_option": "status", "model": "model-a"}
-    assert calls[1][1] == ("request-2",)
-    assert calls[1][2] == {
-        "native_option": "result",
-        "output_path": "song.mp3",
-        "model": "model-a",
-    }
-    assert calls[2][1] == ("request-3",)
-    assert calls[2][2] == {
-        "native_option": "download",
-        "output_path": "download.mp3",
-        "model": "model-a",
-    }
-    assert status["status"] == "submitted"
-    assert result["audio_url"] == "https://cdn.example.com/result.mp3"
-    assert downloaded["audio_url"] == "https://cdn.example.com/download.mp3"
-
-
-def test_async_helper_missing_provider_function_raises_not_implemented(monkeypatch):
     monkeypatch.setattr(
-        music,
-        "_load_provider_module",
-        lambda operation, provider: SimpleNamespace(),
+        _router.importlib,
+        "import_module",
+        provider_import(fake_module, provider),
+    )
+    result = music.generate(
+        lyrics=TEST_LYRICS,
+        api=provider,
+        prompt="validated default model route",
     )
 
-    with pytest.raises(NotImplementedError):
-        music.get_status("text_to_music", "request-1", api="falai")
+    assert fake_module.request["model"] == native_model
+    assert result["model_key"] == model_key
+
+
+def test_generate_accepts_style_none_with_prompt_kwarg(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = FakeProviderModule()
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module))
+    music.generate(
+        lyrics=TEST_LYRICS,
+        model="AceStep_1_5_Turbo",
+        api="deapi",
+        prompt="modern romantic sertanejo",
+    )
+
+    assert fake_module.request["prompt"] == "modern romantic sertanejo"
+
+
+def test_generate_requires_style_or_prompt():
+    from easy_ai_clients import music
+
+    with pytest.raises(ValueError, match="style or prompt is required"):
+        music.generate(
+            lyrics=TEST_LYRICS,
+            model="AceStep_1_5_Turbo",
+            api="deapi",
+        )
+
+
+def test_generate_prompt_wins_over_style_prompt(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = FakeProviderModule()
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module))
+    music.generate(
+        lyrics=TEST_LYRICS,
+        model="AceStep_1_5_Turbo",
+        api="deapi",
+        style="sertanejo",
+        prompt="custom direct prompt",
+    )
+
+    assert fake_module.request["prompt"] == "custom direct prompt"
+    assert fake_module.request["duration"] == 60
+
+
+@pytest.mark.parametrize(
+    "parameter",
+    [
+        "audio_settings",
+        "include_cost",
+        "number_results",
+        "output_format",
+        "output_type",
+        "seed",
+        "ttl",
+    ],
+)
+def test_generate_rejects_removed_public_kwargs(parameter):
+    from easy_ai_clients import music
+
+    with pytest.raises(ValueError, match="Unsupported kwargs"):
+        music.generate(
+            lyrics=TEST_LYRICS,
+            model="AceStep_1_5_Turbo",
+            api="deapi",
+            style="sertanejo",
+            **{parameter: "value"},
+        )
+
+
+def test_generate_rejects_internal_force_instrumental_public_kwarg():
+    from easy_ai_clients import music
+
+    with pytest.raises(ValueError, match="Unsupported kwargs"):
+        music.generate(
+            lyrics=TEST_LYRICS,
+            api="elevenlabs",
+            prompt="upbeat rock",
+            _force_instrumental=True,
+        )
+
+
+def test_generate_accepts_provider_native_model_id(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = FakeProviderModule()
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module))
+    result = music.generate(
+        lyrics=TEST_LYRICS,
+        model="AceStep_1_5_XL_Turbo_INT8",
+        api="deapi",
+        style="sertanejo",
+    )
+
+    assert fake_module.request["model"] == "AceStep_1_5_XL_Turbo_INT8"
+    assert result["model_key"] == "ace_step_1_5_xl_turbo_int8"
+
+
+def test_generate_filters_provider_extra_fields(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    class ExtraProviderModule(FakeProviderModule):
+        def generate(self, **kwargs):
+            result = super().generate(**kwargs)
+            result["raw_response"] = {"secret": "value"}
+            result["audio_url"] = "https://example.test/audio.mp3"
+            result["metadata"] = {
+                "audio_url": "https://example.test/audio.mp3?signature=abc",
+                "Authorization": "Bearer provider-secret",
+                "audio_base64": base64.b64encode(b"x" * 600).decode(),
+            }
+            result["cost_details"] = {
+                "signed_url": "https://example.test/cost?token=abc",
+            }
+            return result
+
+    fake_module = ExtraProviderModule()
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module))
+    result = music.generate(
+        lyrics=TEST_LYRICS,
+        model="AceStep_1_5_Turbo",
+        api="deapi",
+        prompt="modern romantic sertanejo",
+    )
+
+    assert set(result) == PUBLIC_GENERATION_KEYS
+    assert "raw_response" not in result
+    assert "audio_url" not in result
+    result_text = repr(result)
+    assert "https://example.test/audio.mp3" not in result_text
+    assert "provider-secret" not in result_text
+    assert "signature=abc" not in result_text
+    assert "token=abc" not in result_text
+
+
+def test_generate_normalizes_malformed_provider_cost(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    class InvalidCostProviderModule(FakeProviderModule):
+        def generate(self, **kwargs):
+            result = super().generate(**kwargs)
+            result["cost_usd"] = "not-a-number"
+            result["cost_source"] = "provider_response"
+            result["cost_is_estimated"] = True
+            return result
+
+    fake_module = InvalidCostProviderModule()
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module))
+    result = music.generate(
+        lyrics=TEST_LYRICS,
+        model="AceStep_1_5_Turbo",
+        api="deapi",
+        prompt="modern romantic sertanejo",
+    )
+
+    assert result["cost_usd"] == 0.0
+    assert result["cost_source"] == "unavailable"
+    assert result["cost_is_estimated"] is False
+
+
+def test_status_and_download_route_to_provider(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = FakeProviderModule()
+    generation = {
+        "provider": "deapi",
+        "model": "AceStep_1_5_Turbo",
+        "model_key": "ace_step_v1_5_turbo",
+        "status": "submitted",
+        "request_id": "req_123",
+        "output_path": None,
+        "cost_usd": 0.0,
+        "cost_currency": "USD",
+        "cost_source": "unavailable",
+        "cost_is_estimated": False,
+        "cost_details": {},
+        "metadata": {},
+    }
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module))
+    status = music.get_status(generation)
+    download = music.download_result(generation)
+
+    assert status["status"] == "running"
+    assert download["status"] == "completed"
+    assert generation["output_path"] == "outputs/music/temp/deapi/demo.mp3"
+
+
+def test_status_and_download_filter_provider_extra_fields(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    class ExtraProviderModule(FakeProviderModule):
+        def get_status(self, generation):
+            result = super().get_status(generation)
+            result["raw_response"] = {"token": "provider-secret"}
+            result["metadata"] = {
+                "message": "audio at https://example.test/audio.mp3?signature=abc",
+                "Authorization": "Bearer provider-secret",
+            }
+            return result
+
+        def download_result(self, generation):
+            result = super().download_result(generation)
+            result["raw_response"] = {"token": "provider-secret"}
+            result["cost_details"] = {
+                "signed_url": "https://example.test/download.mp3?token=abc",
+            }
+            return result
+
+    fake_module = ExtraProviderModule()
+    generation = {
+        "provider": "deapi",
+        "model": "AceStep_1_5_Turbo",
+        "model_key": "ace_step_v1_5_turbo",
+        "status": "submitted",
+        "request_id": "req_123",
+        "output_path": None,
+        "cost_usd": 0.0,
+        "cost_currency": "USD",
+        "cost_source": "unavailable",
+        "cost_is_estimated": False,
+        "cost_details": {},
+        "metadata": {},
+    }
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module))
+    status = music.get_status(generation)
+    download = music.download_result(generation)
+
+    for result in (status, download):
+        result_text = repr(result)
+        assert set(result) == PUBLIC_GENERATION_KEYS
+        assert "raw_response" not in result
+        assert "provider-secret" not in result_text
+        assert "signature=abc" not in result_text
+        assert "token=abc" not in result_text
+        assert "https://example.test/audio.mp3" not in result_text
+        assert "https://example.test/download.mp3" not in result_text
+
+
+def test_status_rejects_mismatched_explicit_api():
+    from easy_ai_clients import music
+
+    generation = {"provider": "deapi", "model": "AceStep_1_5_Turbo", "request_id": "req_123"}
+
+    with pytest.raises(ValueError, match="does not match api"):
+        music.get_status(generation, api="runware")

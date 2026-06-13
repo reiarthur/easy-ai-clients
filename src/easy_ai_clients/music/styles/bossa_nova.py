@@ -1,0 +1,37 @@
+STYLE_PRESET = {'id': 'bossa_nova',
+ 'description': {'pt': 'Bossa nova brasileira com violao de nylon, sincopa relaxada, baixo suave, percussao leve, harmonia sofisticada e vocal intimo de clima elegante.',
+                 'en': 'Brazilian bossa nova with nylon guitar, relaxed syncopation, soft bass, light percussion, sophisticated harmony, and an intimate elegant vocal feel.'},
+ 'style_family': 'Brazilian bossa nova',
+ 'style_prompt': 'Brazilian bossa nova with relaxed 4/4 syncopation, nylon guitar, soft bass, '
+                 'brush percussion, extended harmony, intimate close vocal, and cool coastal '
+                 'restraint.',
+ 'default_language': 'pt-BR',
+ 'default_vocal': {'description': 'soft close-miked lead vocal with little vibrato and '
+                                  'conversational timing'},
+ 'tempo_bpm': 126,
+ 'key_scale': 'F major',
+ 'time_signature': 4,
+ 'duration_seconds': 60,
+ 'generation_controls': {'instrumental': False},
+ 'instrumentation': ['nylon guitar',
+                     'soft bass',
+                     'brush drums',
+                     'shaker',
+                     'piano',
+                     'flute',
+                     'muted horns'],
+ 'arrangement': ['nylon guitar intro',
+                 'intimate vocal entry',
+                 'light rhythm support',
+                 'short instrumental color',
+                 'restrained ending'],
+ 'energy': 'low',
+ 'mood': ['cool', 'intimate', 'elegant', 'coastal', 'melancholic'],
+ 'mix_target': 'dry vocal, warm nylon guitar, soft room, and low percussion density',
+ 'negative_traits': ['dramatic belting',
+                     'heavy drums',
+                     'excess quantization',
+                     'dense EDM bass',
+                     'operatic vibrato']}
+
+

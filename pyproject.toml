@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "easy-ai-clients"
-version = "0.10.0"
-description = "Unified multi-provider Python client for text, music, image, audio, and video AI APIs."
+version = "0.11.0"
+description = "Unified multi-provider Python client for text, audio, image, music, and video AI APIs."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -16,8 +16,6 @@ keywords = [
   "ai",
   "llm",
   "text-generation",
-  "music-generation",
-  "song-generation",
   "tts",
   "stt",
   "speech-to-text",
@@ -26,6 +24,7 @@ keywords = [
   "image-generation",
   "image-editing",
   "video-generation",
+  "music-generation",
   "text-to-video",
   "image-to-video",
   "multimodal",
@@ -96,6 +95,9 @@ Package = "https://pypi.org/project/easy-ai-clients/"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/easy_ai_clients"]
+exclude = [
+  "/docs/audio/transcribe/live_multilingual_benchmark.md",
+]
 
 [tool.hatch.build.targets.wheel.force-include]
 "docs" = "docs"
@@ -111,6 +113,10 @@ include = [
   "/CONTRIBUTING.md",
   "/LICENSE",
   "/pyproject.toml",
+]
+exclude = [
+  "/docs/audio/transcribe/live_multilingual_benchmark.md",
+  "/tests/fixtures/transcribe_multilingual_audios.tar.xz",
 ]
 
 [tool.pytest.ini_options]

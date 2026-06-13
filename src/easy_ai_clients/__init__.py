@@ -7,10 +7,10 @@ Importing :mod:`easy_ai_clients` exposes ergonomic public submodules:
   recognition (`transcribe`).
 - :mod:`easy_ai_clients.image` - image generation, editing, remixing, and
   vision/multimodal analysis.
+- :mod:`easy_ai_clients.music` - lyric-based music generation with validated
+  provider/model routing.
 - :mod:`easy_ai_clients.video` - text-to-video, image-to-video, motion control,
   lip-sync, agent video, and translation generation.
-- :mod:`easy_ai_clients.music` - music generation, text-to-music,
-  lyrics-to-song, audio-to-music, and stem separation.
 - :mod:`easy_ai_clients.media` - provider asset upload and deletion helpers.
 - :mod:`easy_ai_clients.webhooks` - provider webhook endpoint helpers.
 - :mod:`easy_ai_clients.account` - account and billing lookup helpers.
@@ -21,7 +21,7 @@ provider module shipped with the library.
 
 Example::
 
-    from easy_ai_clients import text, audio, image, video, music, media, webhooks, account
+    from easy_ai_clients import text, audio, image, music, video, media, webhooks, account
 
     text.generate("hello", api="openai")
     audio.generate("hello world", api="openai")
@@ -30,8 +30,8 @@ Example::
     image.edit("make it night", "photo.png", api="openai")
     image.generate("a corgi", api="openai")
     image.remix("studio ghibli", ["ref1.png", "ref2.png"], api="openai")
+    music.generate("lyrics", api="runware", prompt="upbeat pop rock")
     video.generate("a corgi surfing", api="google")
-    music.generate("upbeat 30-second product intro", api="elevenlabs")
 """
 
 from __future__ import annotations
@@ -42,12 +42,12 @@ __all__ = [
     "text",
     "audio",
     "image",
-    "video",
     "music",
+    "video",
     "media",
     "webhooks",
     "account",
     "__version__",
 ]
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"

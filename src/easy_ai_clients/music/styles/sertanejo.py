@@ -1,0 +1,38 @@
+STYLE_PRESET = {'id': 'sertanejo',
+ 'description': {'pt': 'Sertanejo brasileiro com violao, viola caipira, acordeon ou teclado moderno, dueto em harmonia proxima, banda brilhante e refrao para grande publico.',
+                 'en': 'Brazilian sertanejo with acoustic guitar, viola caipira, accordion or modern keyboard, close duet harmony, bright band support, and a crowd-ready chorus.'},
+ 'style_family': 'Brazilian sertanejo',
+ 'style_prompt': 'Brazilian sertanejo with acoustic guitar, viola caipira, accordion or modern '
+                 'keyboard color, close duet harmony, bright band support, direct romantic lyric '
+                 'delivery, and a large crowd-ready chorus.',
+ 'default_language': 'pt-BR',
+ 'default_vocal': {'description': 'duet lead vocal with close harmony in thirds or sixths'},
+ 'tempo_bpm': 92,
+ 'key_scale': 'E major',
+ 'time_signature': 4,
+ 'duration_seconds': 60,
+ 'generation_controls': {'instrumental': False},
+ 'instrumentation': ['acoustic guitar',
+                     'viola caipira',
+                     'accordion',
+                     'electric guitar',
+                     'bass',
+                     'drum kit',
+                     'electronic kick',
+                     'keyboard pads'],
+ 'arrangement': ['short hook intro',
+                 'duet verse',
+                 'large chorus',
+                 'instrumental pickup',
+                 'crowd-ready repeat'],
+ 'energy': 'medium',
+ 'mood': ['romantic', 'direct', 'nostalgic', 'arena-ready'],
+ 'mix_target': 'bright vocals, compressed modern band, acoustic core, and optional live crowd '
+               'layer',
+ 'negative_traits': ['generic U.S. country drift',
+                     'weak chorus',
+                     'no duet blend',
+                     'overcomplex harmony',
+                     'buried lead vocal']}
+
+

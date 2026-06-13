@@ -3,17 +3,27 @@
 All notable changes to **easy-ai-clients** are documented in this file.
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
-
-## 0.10.0 - 2026-06-03
+## 0.11.0 - 2026-06-13
 
 ### Added
 
-- Added `easy_ai_clients.music` with text-to-music, lyrics-to-song,
-  media-to-music, audio-to-music, music editing, stem separation, voice
-  conversion, async helper, direct download, and cost metadata support.
-- Added music provider documentation, credential references, examples, and
-  safe unit tests.
+- Added the validated `easy_ai_clients.music` public dispatcher with deAPI,
+  ElevenLabs, Google Lyria, and Runware ACE-Step music generation, status,
+  download, local option metadata, style preset metadata, and lyrics prompt
+  helpers.
+
+### Fixed
+
+- Hardened music timeout handling, public kwarg rejection, and result/error
+  sanitization for the validated music dispatcher.
+
+## 0.10.0 - 2026-06-03
+
+### Removed
+
+- Removed the broad unvalidated music dispatcher surface from earlier
+  in-development work, plus related provider adapters, documentation,
+  credential references, and tests.
 
 ## 0.9.1 - 2026-05-29
 
@@ -48,7 +58,7 @@ The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `easy_ai_clients.account` modules for reusable provider helper categories.
 - Added current non-legacy provider gaps across existing audio, image, and
   video subcategories, including OpenAI/Groq/xAI/OpenRouter transcription,
-  Deepgram Aura TTS, ElevenLabs sound/music and voice helpers, Hugging Face
+  Deepgram Aura TTS, ElevenLabs sound and voice helpers, Hugging Face
   media adapters, DeepInfra/Mistral vision/audio paths, Together/xAI video
   adapters, Runway image/audio/video-with-audio paths, and Stable Audio.
 - Added documentation pages for audio voice helpers, HeyGen media/webhook/account

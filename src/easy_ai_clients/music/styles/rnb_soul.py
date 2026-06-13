@@ -1,0 +1,38 @@
+STYLE_PRESET = {'id': 'rnb_soul',
+ 'description': {'pt': 'R&B e soul com baixo profundo, teclas eletricas quentes, guitarras ritmicas, backing vocals ricos, melismas expressivos e foco emocional intimo.',
+                 'en': 'R&B and soul with deep bass, warm electric keys, rhythm guitars, rich backing vocals, expressive melisma, and intimate emotional focus.'},
+ 'style_family': 'R&B soul',
+ 'style_prompt': 'R&B and soul with deep bass pocket, warm electric keys, guitar chops, rich '
+                 'backing vocals, expressive lead melisma, smooth reverb, and intimate emotional '
+                 'focus.',
+ 'default_language': 'en-US',
+ 'default_vocal': {'description': 'expressive lead vocal with melisma, falsetto options, and close '
+                                  'harmony stacks'},
+ 'tempo_bpm': 92,
+ 'key_scale': 'F minor',
+ 'time_signature': 4,
+ 'duration_seconds': 60,
+ 'generation_controls': {'instrumental': False},
+ 'instrumentation': ['lead vocal',
+                     'backing vocals',
+                     'bass',
+                     'drums',
+                     'electric piano',
+                     'guitar chops',
+                     'horns',
+                     'synth pads'],
+ 'arrangement': ['pocket-first groove',
+                 'rich harmony verse',
+                 'chorus vocal stacks',
+                 'bridge lift',
+                 'sparse modern low-end option'],
+ 'energy': 'medium',
+ 'mood': ['intimate', 'sensual', 'warm', 'aching', 'dignified'],
+ 'mix_target': 'vocal texture forward, deep bass pocket, warm keys, and smooth delay throws',
+ 'negative_traits': ['harsh rock wall',
+                     'thin drums',
+                     'dry unlayered vocal',
+                     'generic pop-only harmony',
+                     'muddy low mids']}
+
+

@@ -1,0 +1,38 @@
+STYLE_PRESET = {'id': 'mpb',
+ 'description': {'pt': 'MPB brasileira com cancao acustica, cores de samba, bossa, baiao, ijexa, soul, rock ou reggae, harmonia rica e interpretacao vocal reflexiva.',
+                 'en': 'Brazilian MPB with acoustic songcraft, samba, bossa, baiao, ijexa, soul, rock, or reggae colors, rich harmony, and reflective vocal interpretation.'},
+ 'style_family': 'Brazilian MPB',
+ 'style_prompt': 'Brazilian MPB with acoustic songcraft, samba, bossa, baiao, ijexa, soul, rock, '
+                 'or reggae colors, extended harmony, text-forward vocal interpretation, subtle '
+                 'band color, and reflective album-production depth.',
+ 'default_language': 'pt-BR',
+ 'default_vocal': {'description': 'interpretive lead vocal with text-forward phrasing and '
+                                  'expressive restraint'},
+ 'tempo_bpm': 104,
+ 'key_scale': 'C major',
+ 'time_signature': 4,
+ 'duration_seconds': 60,
+ 'generation_controls': {'instrumental': False},
+ 'instrumentation': ['voice',
+                     'acoustic guitar',
+                     'piano',
+                     'pandeiro',
+                     'electric bass',
+                     'strings',
+                     'horns',
+                     'synth texture'],
+ 'arrangement': ['song-led intro motif',
+                 'lyric-centered verse',
+                 'harmonic lift into chorus',
+                 'instrumental interlude',
+                 'dynamic final section'],
+ 'energy': 'variable',
+ 'mood': ['literary', 'hybrid', 'sophisticated', 'reflective'],
+ 'mix_target': 'hybrid acoustic and electric album production with clear vocal focus',
+ 'negative_traits': ['one-beat genre treatment',
+                     'generic pop loop only',
+                     'buried lyric',
+                     'flat harmonic language',
+                     'excessive gloss']}
+
+

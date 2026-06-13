@@ -1,127 +1,107 @@
+"""Gated live music smoke test.
+
+This module submits a real music generation only when both
+`EASY_AI_CLIENTS_LIVE_MUSIC=1` and `EASY_AI_CLIENTS_LIVE_MUSIC_API` are set by
+the caller. Normal local validation keeps this gate cleared.
+"""
+
+from __future__ import annotations
+
 import os
-from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 import pytest
-
-from easy_ai_clients import music
-from easy_ai_clients.music._common import env_utils
+from dotenv import load_dotenv
 
 pytestmark = pytest.mark.live
 
-LIVE_GATE = "EASY_AI_CLIENTS_LIVE_MUSIC"
-PAID_CALL_GATE = "EASY_AI_CLIENTS_LIVE_MUSIC_PAID_CALL"
-MAX_USD_ENV = "EASY_AI_CLIENTS_LIVE_MUSIC_MAX_USD"
-DEFAULT_MAX_USD = Decimal("1.00")
-DEFAULT_ESTIMATED_SMOKE_USD = Decimal("0.05")
+ROOT = Path(__file__).resolve().parents[1]
+LOCAL_ENV_FILE = ROOT.parent / ".env-easy-ai-clients"
+LIVE_ENV = "EASY_AI_CLIENTS_LIVE_MUSIC"
+API_ENV = "EASY_AI_CLIENTS_LIVE_MUSIC_API"
+MODEL_ENV = "EASY_AI_CLIENTS_LIVE_MUSIC_MODEL"
+ENV_FILE_ENV = "EASY_AI_CLIENTS_ENV_FILE"
 
-if os.environ.get(LIVE_GATE) != "1":
-    pytest.skip(
-        f"Set {LIVE_GATE}=1 to enable gated live music tests.",
-        allow_module_level=True,
-    )
+PROVIDER_ENV = {
+    "deapi": "DEAPI_API_KEY",
+    "elevenlabs": "ELEVENLABS_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "runware": "RUNWARE_API_KEY",
+}
 
+PROVIDER_DURATION = {
+    "deapi": 10,
+    "elevenlabs": 3,
+    "google": 30,
+    "runware": 30,
+}
 
-def _max_usd():
-    raw_value = os.environ.get(MAX_USD_ENV, str(DEFAULT_MAX_USD))
-    try:
-        return Decimal(raw_value)
-    except InvalidOperation:
-        pytest.fail(f"{MAX_USD_ENV} must be a decimal USD amount.")
-
-
-def _estimated_smoke_usd():
-    raw_value = os.environ.get(
-        "EASY_AI_CLIENTS_LIVE_MUSIC_ESTIMATED_USD",
-        str(DEFAULT_ESTIMATED_SMOKE_USD),
-    )
-    try:
-        return Decimal(raw_value)
-    except InvalidOperation:
-        pytest.fail("EASY_AI_CLIENTS_LIVE_MUSIC_ESTIMATED_USD must be a decimal USD amount.")
-
-
-def _live_provider():
-    return os.environ.get("EASY_AI_CLIENTS_LIVE_MUSIC_PROVIDER", "elevenlabs").lower()
-
-
-def _require_credentials(provider):
-    names = env_utils.env_var_names(provider)
-    if not names:
-        pytest.skip(f"No credential mapping exists for provider '{provider}'.")
-
-    missing = [name for name in names if not os.environ.get(name)]
-    if missing:
-        pytest.skip(
-            "Missing provider credential environment variable(s): "
-            + ", ".join(missing)
-        )
+PUBLIC_GENERATION_KEYS = {
+    "provider",
+    "model",
+    "model_key",
+    "status",
+    "request_id",
+    "output_path",
+    "cost_usd",
+    "cost_currency",
+    "cost_source",
+    "cost_is_estimated",
+    "cost_details",
+    "metadata",
+}
 
 
-def _require_paid_call_gate():
-    if os.environ.get(PAID_CALL_GATE) != "1":
-        pytest.skip(
-            f"Set {PAID_CALL_GATE}=1 to allow a paid provider smoke call."
-        )
+def _require_live_enabled():
+    if os.getenv(LIVE_ENV) != "1":
+        pytest.skip(f"Set {LIVE_ENV}=1 to run a live music smoke test.")
 
 
-def _require_cost_ceiling():
-    ceiling = _max_usd()
-    estimated = _estimated_smoke_usd()
-    if ceiling < estimated:
-        pytest.skip(
-            f"{MAX_USD_ENV}={ceiling} is below estimated smoke cost {estimated}."
-        )
-    return ceiling
+def _load_credentials():
+    if os.getenv(ENV_FILE_ENV):
+        load_dotenv(os.environ[ENV_FILE_ENV], override=False)
+    load_dotenv(LOCAL_ENV_FILE, override=False)
 
 
-def _live_kwargs():
+def _selected_api():
+    from easy_ai_clients import music
+
+    api = str(os.getenv(API_ENV) or "").strip()
+    if not api:
+        pytest.skip(f"Set {API_ENV} to one of: {', '.join(music.available_apis())}.")
+    if api not in music.available_apis():
+        pytest.skip(f"{API_ENV}={api!r} is not supported by easy_ai_clients.music.")
+    return api
+
+
+def _require_env(api):
+    env_var = PROVIDER_ENV[api]
+    if not os.getenv(env_var):
+        pytest.skip(f"{env_var} is not configured for live music smoke tests.")
+
+
+def test_live_music_generation_smoke():
+    from easy_ai_clients import music
+
+    _require_live_enabled()
+    _load_credentials()
+    api = _selected_api()
+    _require_env(api)
+
     kwargs = {
-        "sync": False,
-        "music_length_ms": 10000,
-        "duration": 10,
-        "duration_seconds": 10,
-        "output_format": "mp3",
+        "lyrics": "[Verse]\nThe morning opens wide\n[Chorus]\nWe keep the light alive",
+        "api": api,
+        "prompt": "short hopeful acoustic pop with clear lead vocal",
+        "duration": PROVIDER_DURATION[api],
     }
-    model = os.environ.get("EASY_AI_CLIENTS_LIVE_MUSIC_MODEL")
+    model = str(os.getenv(MODEL_ENV) or "").strip()
     if model:
         kwargs["model"] = model
-    return kwargs
 
+    generation = music.generate(**kwargs)
 
-def test_live_music_credentials_are_configured_when_gate_is_enabled():
-    provider = _live_provider()
-
-    assert _max_usd() >= Decimal("0")
-    _require_credentials(provider)
-
-
-def test_live_lyrics_to_song_paid_smoke(tmp_path):
-    _require_paid_call_gate()
-    _require_cost_ceiling()
-
-    provider = _live_provider()
-    _require_credentials(provider)
-    if provider not in music.available_lyrics_to_song_apis():
-        pytest.skip(f"Provider '{provider}' is not available for lyrics_to_song.")
-
-    prompt = os.environ.get(
-        "EASY_AI_CLIENTS_LIVE_MUSIC_PROMPT",
-        "short simple acoustic test",
-    )
-    lyrics = os.environ.get(
-        "EASY_AI_CLIENTS_LIVE_MUSIC_LYRICS",
-        "[Verse]\nThis is a short live smoke test.",
-    )
-
-    result = music.lyrics_to_song(
-        lyrics,
-        prompt=prompt,
-        api=provider,
-        output_path=str(tmp_path / "live-music.mp3"),
-        **_live_kwargs(),
-    )
-
-    assert result["provider"] == provider
-    assert result["operation"] == "lyrics_to_song"
-    assert result["status"] in {"submitted", "completed"}
-    assert result["error"] if result["status"] == "failed" else True
+    assert set(generation) == PUBLIC_GENERATION_KEYS
+    assert generation["provider"] == api
+    assert generation["request_id"]
+    assert generation["status"] in {"submitted", "running", "completed"}
+    assert "raw_response" not in generation

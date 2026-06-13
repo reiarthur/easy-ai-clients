@@ -8,9 +8,16 @@ normalized result contract.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 
+pytestmark = pytest.mark.live
+
+ROOT = Path(__file__).resolve().parents[1]
+LOCAL_ENV_FILE = ROOT.parent / ".env-easy-ai-clients"
+ENV_FILE_ENV = "EASY_AI_CLIENTS_ENV_FILE"
 MAX_LIVE_VIDEO_COST_USD = 1.00
 ESTIMATED_LIVE_VIDEO_COST_USD = {
     "google": 0.20,
@@ -33,7 +40,14 @@ def _guard_budget():
         )
 
 
+def _load_credentials():
+    if os.getenv(ENV_FILE_ENV):
+        load_dotenv(os.environ[ENV_FILE_ENV], override=False)
+    load_dotenv(LOCAL_ENV_FILE, override=False)
+
+
 def _require_env(name):
+    _load_credentials()
     if not os.getenv(name):
         pytest.skip(f"{name} is not configured for live video smoke tests.")
 

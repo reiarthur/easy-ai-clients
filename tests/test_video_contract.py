@@ -44,6 +44,10 @@ def test_video_env_vars_are_documented_and_templated():
         assert name in configuration
         assert name in providers
 
+    for name in ("HEYGEN_API_KEY", "HEYGEN_API_BASE"):
+        assert name in env_example
+        assert name in configuration
+
     assert "reserved" not in configuration.lower()
 
 

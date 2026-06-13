@@ -14,7 +14,11 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
+pytestmark = pytest.mark.live
+
 ROOT = Path(__file__).resolve().parents[1]
+LOCAL_ENV_FILE = ROOT.parent / ".env-easy-ai-clients"
+ENV_FILE_ENV = "EASY_AI_CLIENTS_ENV_FILE"
 AUDIO_FIXTURE = ROOT / "audio.mp3"
 TRANSCRIPT_FIXTURE = ROOT / "audio.txt"
 
@@ -135,7 +139,9 @@ def test_live_transcribe_model(api, model, kwargs):
     if os.getenv("EASY_AI_CLIENTS_LIVE_TRANSCRIBE") != "1":
         pytest.skip("live transcription validation is gated by EASY_AI_CLIENTS_LIVE_TRANSCRIBE=1")
 
-    load_dotenv(ROOT / ".env", override=False)
+    if os.getenv(ENV_FILE_ENV):
+        load_dotenv(os.environ[ENV_FILE_ENV], override=False)
+    load_dotenv(LOCAL_ENV_FILE, override=False)
 
     if not AUDIO_FIXTURE.exists() or not TRANSCRIPT_FIXTURE.exists():
         pytest.skip("live accuracy validation skipped because audio.mp3/audio.txt fixtures are missing")

@@ -38,6 +38,7 @@ those failures into dictionaries when possible.
 | `audio.transcribe` | `text=""`, `cost_usd=0.0`, `cost_source="unavailable"`, `cost_lookup_error`, `warnings`, `error` |
 | `image.generate/edit/remix` | `base64=""`, `cust_usd=0.0`, `warnings`, `error` |
 | `image.analyze` | `output` contains the failure text, `cost_usd=0.0`, `warnings`, `error` |
+| `music.generate/get_status/download_result` | Local validation and provider wrapper failures can raise; successful results keep the safe normalized music schema |
 | `video.*` | `status="failed"`, `video_url=None`, `cost_usd=0.0`, `cost_source="unavailable"`, `warnings`, `error` |
 
 ## Image Warnings
@@ -85,6 +86,11 @@ If the provider accepts the model and kwargs, the call succeeds. If the provider
 rejects them, the dispatcher returns a normalized error result. Local validation
 is kept only for cases that prevent building a request, such as missing local
 files, conflicting `path`/`url` arguments, or invalid internal payload shapes.
+
+`music.generate(...)` also raises `ValueError` for invalid local request shapes,
+including missing `api`, unknown music provider, unsupported model, unknown
+style, missing `style`/`prompt`, removed public kwargs, and unsupported
+`negative_prompt` usage. These failures happen before live provider calls.
 
 ## Cost Helper Errors
 

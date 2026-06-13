@@ -1,0 +1,38 @@
+STYLE_PRESET = {'id': 'gospel',
+ 'description': {'pt': 'Gospel com vocal principal poderoso, resposta de coro, piano e Hammond aquecidos, palmas, banda de igreja em crescimento e elevacao comunitaria.',
+                 'en': 'Gospel with a powerful lead vocal, choir response, warm piano and Hammond, handclaps, a building church band, and communal uplift.'},
+ 'style_family': 'gospel',
+ 'style_prompt': 'Gospel with powerful lead testimony, choir response, piano and Hammond organ '
+                 'warmth, handclaps, church band escalation, repeated vamp, and triumphant '
+                 'communal uplift.',
+ 'default_language': 'en-US',
+ 'default_vocal': {'description': 'powerful lead testimony with choir response, melisma, and '
+                                  'ad-libs in vamps'},
+ 'tempo_bpm': 96,
+ 'key_scale': 'Bb major',
+ 'time_signature': 4,
+ 'duration_seconds': 60,
+ 'generation_controls': {'instrumental': False},
+ 'instrumentation': ['lead vocal',
+                     'SATB choir',
+                     'piano',
+                     'Hammond organ',
+                     'bass',
+                     'drums',
+                     'guitar',
+                     'handclaps'],
+ 'arrangement': ['verse to chorus build',
+                 'call-and-response',
+                 'repeated vamp',
+                 'band intensification',
+                 'final key-change lift'],
+ 'energy': 'high',
+ 'mood': ['devotional', 'triumphant', 'communal', 'uplifting'],
+ 'mix_target': 'lead vocal dominant, wide choir, live room presence, organ and piano warmth',
+ 'negative_traits': ['secular club framing',
+                     'flat choir pads',
+                     'emotionless lead',
+                     'minimal spoken-only delivery',
+                     'weak band escalation']}
+
+

@@ -16,8 +16,12 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
+pytestmark = pytest.mark.live
+
 ROOT = Path(__file__).resolve().parents[1]
+LOCAL_ENV_FILE = ROOT.parent / ".env-easy-ai-clients"
 LIVE_ENV = "EASY_AI_CLIENTS_LIVE_HEYGEN"
+ENV_FILE_ENV = "EASY_AI_CLIENTS_ENV_FILE"
 MAX_COST_ENV = "EASY_AI_CLIENTS_LIVE_HEYGEN_MAX_USD"
 PAID_VIDEO_ENV = "EASY_AI_CLIENTS_LIVE_HEYGEN_PAID_VIDEO"
 DEFAULT_MAX_USD = Decimal("8.50")
@@ -39,9 +43,11 @@ def _require_live_enabled():
 
 
 def _load_credentials():
-    load_dotenv(ROOT / ".env", override=False)
+    if os.getenv(ENV_FILE_ENV):
+        load_dotenv(os.environ[ENV_FILE_ENV], override=False)
+    load_dotenv(LOCAL_ENV_FILE, override=False)
     if not (os.getenv("HEYGEN_KEY") or os.getenv("HEYGEN_API_KEY")):
-        pytest.skip("HEYGEN_KEY is not configured for live HeyGen smoke tests.")
+        pytest.skip("HEYGEN_KEY or HEYGEN_API_KEY is not configured for live HeyGen smoke tests.")
 
 
 def _max_cost() -> Decimal:

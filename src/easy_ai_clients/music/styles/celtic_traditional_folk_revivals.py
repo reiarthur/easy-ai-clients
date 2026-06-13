@@ -1,0 +1,38 @@
+STYLE_PRESET = {'id': 'celtic_traditional_folk_revivals',
+ 'description': {'pt': 'Folk tradicional celta com fiddle, flautas ou pipes, bodhran, violao ou bouzouki, melodias modais ornamentadas e energia coletiva de danca.',
+                 'en': 'Celtic traditional folk with fiddle, flutes or pipes, bodhran, guitar or bouzouki, ornamented modal melodies, and collective dance energy.'},
+ 'style_family': 'Celtic traditional folk revival',
+ 'style_prompt': 'Celtic and Irish-Scottish folk revival with fiddle and pipe melody, modal tune '
+                 'sets, bodhran pulse, acoustic guitar or bouzouki support, clear folk vocal, and '
+                 'communal dance energy.',
+ 'default_language': 'en-IE',
+ 'default_vocal': {'description': 'clear folk lead vocal with optional instrumental tune-set '
+                                  'focus'},
+ 'tempo_bpm': 124,
+ 'key_scale': 'D Mixolydian',
+ 'time_signature': 6,
+ 'duration_seconds': 60,
+ 'generation_controls': {'instrumental': False},
+ 'instrumentation': ['fiddle',
+                     'uilleann pipes',
+                     'tin whistle',
+                     'flute',
+                     'bodhran',
+                     'harp',
+                     'bouzouki',
+                     'acoustic guitar'],
+ 'arrangement': ['jig or reel tune set',
+                 'repeated A/B sections',
+                 'key or tune change',
+                 'ornamented melody',
+                 'dynamic ensemble build'],
+ 'energy': 'high',
+ 'mood': ['lively', 'communal', 'modal', 'pastoral', 'driving'],
+ 'mix_target': 'acoustic ensemble clarity with ornament detail, pulse, drones, and natural room',
+ 'negative_traits': ['generic fantasy soundtrack',
+                     'over-smooth pop',
+                     'missing ornamentation',
+                     'heavy EDM drums',
+                     'flat quantization']}
+
+
