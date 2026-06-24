@@ -118,6 +118,53 @@ def test_public_falai_helpers_pass_explicit_urls(monkeypatch):
     assert result["video_url"] == "https://cdn.example/final.mp4"
 
 
+def test_avatar_falai_helpers_resolve_model_aliases(monkeypatch):
+    from easy_ai_clients import video
+    from easy_ai_clients.video._avatar_video._apis import falai as provider
+
+    captured = []
+
+    def fake_status(model, request_id, api_key, timeout_seconds=None, status_url=None, poll_url=None):
+        captured.append(model)
+        return {"status": "COMPLETED"}
+
+    def fake_result(
+        model,
+        request_id,
+        api_key,
+        timeout_seconds=None,
+        response_url=None,
+        result_url=None,
+    ):
+        captured.append(model)
+        return {"video": {"url": "https://cdn.example/avatar.mp4"}}
+
+    monkeypatch.setenv("FAL_KEY", "fal-key")
+    monkeypatch.setattr(provider, "fal_get_status", fake_status)
+    monkeypatch.setattr(provider, "fal_get_result", fake_result)
+
+    status = video.get_status(
+        "avatar_video",
+        "fal-avatar-1",
+        api="falai",
+        model="fal_omnihuman_v1_5",
+    )
+    result = video.get_result(
+        "avatar_video",
+        "fal-avatar-1",
+        api="falai",
+        model="fal_omnihuman_v1_5",
+    )
+
+    assert status["model"] == "fal-ai/bytedance/omnihuman/v1.5"
+    assert result["model"] == "fal-ai/bytedance/omnihuman/v1.5"
+    assert result["video_url"] == "https://cdn.example/avatar.mp4"
+    assert captured == [
+        "fal-ai/bytedance/omnihuman/v1.5",
+        "fal-ai/bytedance/omnihuman/v1.5",
+    ]
+
+
 def test_falai_helpers_fall_back_to_reconstructed_urls(monkeypatch):
     from easy_ai_clients.video import _shared
 
@@ -413,6 +460,47 @@ def test_google_operation_url_is_preserved_and_download_uses_api_headers(monkeyp
     )
     provider.download_generation(video_url="https://files.example/google.mp4", output_path="out.mp4")
     assert download_seen["headers"]["x-goog-api-key"] == "google-key"
+
+
+def test_replicate_prediction_url_is_preserved(monkeypatch):
+    from easy_ai_clients import video
+    from easy_ai_clients.video._avatar_video._apis import replicate as provider
+
+    captured = []
+
+    def fake_http_json(method, url, headers=None, payload=None, timeout_seconds=None):
+        captured.append(url)
+        return {
+            "id": "prediction-1",
+            "status": "succeeded",
+            "output": "https://replicate.delivery/output.mp4",
+            "urls": {"get": "https://api.replicate.com/v1/predictions/prediction-1"},
+        }
+
+    monkeypatch.setenv("REPLICATE_API_TOKEN", "replicate-key")
+    monkeypatch.setattr(provider, "http_json", fake_http_json)
+
+    status = video.get_status(
+        "avatar_video",
+        "prediction-1",
+        api="replicate",
+        model="replicate_prunaai_p_video_avatar",
+        task_url="https://api.replicate.com/v1/predictions/exact",
+    )
+    result = video.get_result(
+        "avatar_video",
+        "prediction-1",
+        api="replicate",
+        model="replicate_prunaai_p_video_avatar",
+        task_url="https://api.replicate.com/v1/predictions/exact",
+    )
+
+    assert status["status"] == "completed"
+    assert result["video_url"] == "https://replicate.delivery/output.mp4"
+    assert captured == [
+        "https://api.replicate.com/v1/predictions/exact",
+        "https://api.replicate.com/v1/predictions/exact",
+    ]
 
 
 def test_hedra_common_preserves_and_reuses_status_refs(monkeypatch):

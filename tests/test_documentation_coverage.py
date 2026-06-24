@@ -98,6 +98,7 @@ def test_environment_template_matches_documented_runtime_variables():
         "MUSIC_API_TIMEOUT",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
+        "REPLICATE_API_TOKEN",
         "RUNWARE_API_KEY",
         "RUNWAYML_API_SECRET",
         "SPEECHMATICS_API_KEY",

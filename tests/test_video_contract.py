@@ -39,7 +39,14 @@ def test_video_env_vars_are_documented_and_templated():
     configuration = (ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
     providers = (ROOT / "docs" / "providers.md").read_text(encoding="utf-8")
 
-    for name in ("FAL_KEY", "GOOGLE_API_KEY", "HEDRA_API_KEY", "RUNWAYML_API_SECRET", "HEYGEN_KEY"):
+    for name in (
+        "FAL_KEY",
+        "GOOGLE_API_KEY",
+        "HEDRA_API_KEY",
+        "RUNWAYML_API_SECRET",
+        "HEYGEN_KEY",
+        "REPLICATE_API_TOKEN",
+    ):
         assert name in env_example
         assert name in configuration
         assert name in providers
@@ -483,6 +490,192 @@ def test_avatar_video_runway_and_falai_payloads(monkeypatch):
     assert captured["payload"]["avatar"]["presetId"] == "influencer"
     assert captured["payload"]["speech"]["text"] == "Hello there."
     assert captured["payload"]["speech"]["voice"] == {"type": "preset", "presetId": "default"}
+
+
+def test_avatar_video_approved_target_alias_payloads(monkeypatch):
+    from easy_ai_clients.video._avatar_video._apis import falai, hedra, replicate
+
+    omni_model = falai._selected_model({"model": "fal_omnihuman_v1_5"})  # noqa: SLF001
+    omni_payload = falai._build_payload(  # noqa: SLF001
+        omni_model,
+        {
+            "image": "https://example.com/avatar.png",
+            "audio": "https://example.com/voice.mp3",
+            "text": None,
+            "output_path": None,
+        },
+        {"model": "fal_omnihuman_v1_5", "duration_seconds": 10},
+    )
+    veed_model = falai._selected_model({"model": "fal_veed_fabric_1_0"})  # noqa: SLF001
+    veed_payload = falai._build_payload(  # noqa: SLF001
+        veed_model,
+        {
+            "image": "https://example.com/avatar.png",
+            "audio": "https://example.com/voice.mp3",
+            "text": None,
+            "output_path": None,
+        },
+        {"model": "fal_veed_fabric_1_0", "duration_seconds": 8},
+    )
+
+    assert omni_model == "fal-ai/bytedance/omnihuman/v1.5"
+    assert omni_payload["image_url"] == "https://example.com/avatar.png"
+    assert omni_payload["audio_url"] == "https://example.com/voice.mp3"
+    assert omni_payload["resolution"] == "720p"
+    assert omni_payload["turbo_mode"] is True
+    assert "text" not in omni_payload
+    assert falai._cost(omni_model, {"duration_seconds": 10})["cost_usd"] == pytest.approx(1.60)  # noqa: SLF001
+
+    assert veed_model == "veed/fabric-1.0"
+    assert veed_payload == {
+        "image_url": "https://example.com/avatar.png",
+        "audio_url": "https://example.com/voice.mp3",
+        "resolution": "480p",
+    }
+    assert falai._cost(veed_model, {"duration_seconds": 8})["cost_usd"] == pytest.approx(0.64)  # noqa: SLF001
+
+    monkeypatch.setenv("HEDRA_API_KEY", "test-hedra")
+    _, hedra_model = hedra._selected_model({"model": "hedra_avatar"})  # noqa: SLF001
+    hedra_payload = hedra._build_payload(  # noqa: SLF001
+        hedra_model,
+        None,
+        None,
+        None,
+        None,
+        None,
+        {
+            "model": "hedra_avatar",
+            "start_keyframe_url": "https://example.com/avatar.png",
+            "audio_id": "audio-id",
+            "duration_seconds": 5,
+            "aspect_ratio": "9:16",
+            "resolution": "540p",
+        },
+    )
+
+    assert hedra_model["id"] == "26f0fc66-152b-40ab-abed-76c43df99bc8"
+    assert hedra_payload["start_keyframe_url"] == "https://example.com/avatar.png"
+    assert hedra_payload["audio_id"] == "audio-id"
+    assert hedra_payload["generated_video_inputs"]["aspect_ratio"] == "9:16"
+    assert hedra_payload["generated_video_inputs"]["resolution"] == "540p"
+
+    replicate_payload = replicate._build_payload(  # noqa: SLF001
+        replicate._selected_model({"model": "replicate_prunaai_p_video_avatar"}),  # noqa: SLF001
+        {
+            "image": "data:image/png;base64,aW1hZ2U=",
+            "audio": "data:audio/mpeg;base64,YXVkaW8=",
+            "text": None,
+            "output_path": None,
+        },
+        {
+            "model": "replicate_prunaai_p_video_avatar",
+            "duration_seconds": 5,
+            "video_prompt": "The person is talking naturally.",
+        },
+    )
+    assert replicate_payload["input"] == {
+        "image": "data:image/png;base64,aW1hZ2U=",
+        "audio": "data:audio/mpeg;base64,YXVkaW8=",
+        "resolution": "720p",
+        "video_prompt": "The person is talking naturally.",
+    }
+    assert replicate._cost({"duration_seconds": 5, "resolution": "720p"})["cost_usd"] == pytest.approx(0.125)  # noqa: SLF001
+
+
+def test_heygen_photo_avatar_one_step_flow(monkeypatch):
+    from easy_ai_clients.video import _heygen_common as common
+    from easy_ai_clients.video._avatar_video._apis import heygen as provider
+
+    calls = []
+
+    def fake_request_json(method, path, payload=None, **kwargs):
+        calls.append((method, path, payload))
+        if path == "/v3/avatars":
+            return {"data": {"avatar_item": {"id": "photo-avatar-1", "status": "completed"}}}
+        if path == "/v3/videos":
+            return {"data": {"video_id": "video-1", "status": "waiting"}}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(common._heygen, "request_json", fake_request_json)
+
+    result = provider.generate_avatar_video(
+        image_url="https://example.com/portrait.jpg",
+        audio_url="https://example.com/audio.mp3",
+        model="heygen_photo_avatar",
+        duration_seconds=10,
+        sync=False,
+    )
+
+    assert result["model"] == "avatar_iv/photo_avatar"
+    assert result["request_id"] == "video-1"
+    assert result["avatar_id"] == "photo-avatar-1"
+    assert result["cost_usd"] == pytest.approx(1.5)
+    assert calls[0][1] == "/v3/avatars"
+    assert calls[0][2]["type"] == "photo"
+    assert calls[0][2]["file"] == {"type": "url", "url": "https://example.com/portrait.jpg"}
+    assert calls[1][1] == "/v3/videos"
+    assert calls[1][2]["type"] == "avatar"
+    assert calls[1][2]["avatar_id"] == "photo-avatar-1"
+    assert calls[1][2]["audio_url"] == "https://example.com/audio.mp3"
+    assert calls[1][2]["resolution"] == "720p"
+    assert calls[1][2]["aspect_ratio"] == "9:16"
+    assert "duration_seconds" not in calls[1][2]
+
+
+def test_replicate_avatar_video_submission_and_result(monkeypatch):
+    from easy_ai_clients.video._avatar_video._apis import replicate as provider
+
+    captured = []
+
+    def fake_http_json(method, url, headers=None, payload=None, timeout_seconds=None):
+        captured.append(
+            {
+                "method": method,
+                "url": url,
+                "headers": headers,
+                "payload": payload,
+            }
+        )
+        if method == "POST":
+            return {
+                "id": "prediction-1",
+                "status": "starting",
+                "urls": {"get": "https://api.replicate.com/v1/predictions/prediction-1"},
+            }
+        return {
+            "id": "prediction-1",
+            "status": "succeeded",
+            "output": "https://replicate.delivery/output.mp4",
+            "urls": {"get": "https://api.replicate.com/v1/predictions/prediction-1"},
+        }
+
+    monkeypatch.setenv("REPLICATE_API_TOKEN", "test-replicate")
+    monkeypatch.setattr(provider, "http_json", fake_http_json)
+
+    result = provider.generate_avatar_video(
+        image_url="data:image/png;base64,aW1hZ2U=",
+        audio_url="data:audio/mpeg;base64,YXVkaW8=",
+        model="replicate_prunaai_p_video_avatar",
+        video_prompt="The person is talking naturally.",
+        duration_seconds=4,
+        sync=True,
+    )
+
+    assert result["provider"] == "replicate"
+    assert result["model"] == "prunaai/p-video-avatar"
+    assert result["status"] == "completed"
+    assert result["request_id"] == "prediction-1"
+    assert result["video_url"] == "https://replicate.delivery/output.mp4"
+    assert result["cost_usd"] == pytest.approx(0.10)
+    assert captured[0]["method"] == "POST"
+    assert captured[0]["url"].endswith("/v1/models/prunaai/p-video-avatar/predictions")
+    assert captured[0]["headers"]["Authorization"] == "Bearer test-replicate"
+    assert captured[0]["headers"]["Prefer"] == "wait=5"
+    assert captured[0]["payload"]["input"]["image"].startswith("data:image/png")
+    assert captured[0]["payload"]["input"]["audio"].startswith("data:audio")
+    assert captured[0]["payload"]["input"]["resolution"] == "720p"
+    assert captured[0]["payload"]["input"]["video_prompt"] == "The person is talking naturally."
+    assert captured[1]["method"] == "GET"
 
 
 def test_hedra_text_image_and_avatar_payloads(monkeypatch):

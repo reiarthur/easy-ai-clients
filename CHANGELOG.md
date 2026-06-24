@@ -3,6 +3,15 @@
 All notable changes to **easy-ai-clients** are documented in this file.
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.12.0 - 2026-06-24
+
+### Added
+
+- Added approved image-plus-audio avatar video targets for fal.ai OmniHuman,
+  fal.ai VEED Fabric, Hedra Avatar, HeyGen Photo Avatar, and Replicate
+  `prunaai/p-video-avatar` with mocked contract coverage and safe local
+  documentation.
+
 ## 0.11.0 - 2026-06-13
 
 ### Added

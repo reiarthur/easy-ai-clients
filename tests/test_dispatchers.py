@@ -554,6 +554,82 @@ def test_video_dispatcher_routes_to_provider(monkeypatch, op, provider_module, f
         assert captured["kwargs"]["audio_path"] == "voice.wav"
 
 
+@pytest.mark.parametrize(
+    ("api", "provider_module", "model"),
+    [
+        (
+            "falai",
+            "easy_ai_clients.video._avatar_video._apis.falai",
+            "fal_omnihuman_v1_5",
+        ),
+        (
+            "falai",
+            "easy_ai_clients.video._avatar_video._apis.falai",
+            "fal_veed_fabric_1_0",
+        ),
+        (
+            "hedra",
+            "easy_ai_clients.video._avatar_video._apis.hedra",
+            "hedra_avatar",
+        ),
+        (
+            "heygen",
+            "easy_ai_clients.video._avatar_video._apis.heygen",
+            "heygen_photo_avatar",
+        ),
+        (
+            "replicate",
+            "easy_ai_clients.video._avatar_video._apis.replicate",
+            "replicate_prunaai_p_video_avatar",
+        ),
+    ],
+)
+def test_avatar_video_approved_targets_route_through_public_dispatcher(
+    monkeypatch,
+    api,
+    provider_module,
+    model,
+):
+    import importlib
+
+    from easy_ai_clients import video
+
+    provider = importlib.import_module(provider_module)
+    captured = {}
+
+    def fake_generate_avatar_video(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return {
+            "provider": api,
+            "model": kwargs.get("model"),
+            "status": "completed",
+            "request_id": "request",
+            "video_url": "https://example.com/video.mp4",
+            "output_path": None,
+            "cost_usd": 0.0,
+            "cost_is_estimated": True,
+            "cost_source": "stub",
+            "raw_response": {},
+        }
+
+    monkeypatch.setattr(provider, "generate_avatar_video", fake_generate_avatar_video)
+
+    result = video.avatar_video(
+        image="https://example.com/avatar.png",
+        audio="https://example.com/audio.mp3",
+        api=api,
+        model=model,
+        duration_seconds=3,
+    )
+
+    assert result["status"] == "completed"
+    assert captured["kwargs"]["image_url"] == "https://example.com/avatar.png"
+    assert captured["kwargs"]["audio_url"] == "https://example.com/audio.mp3"
+    assert captured["kwargs"]["model"] == model
+    assert captured["kwargs"]["duration_seconds"] == 3
+
+
 def test_video_falai_forwards_undocumented_model_and_kwargs_to_transport(monkeypatch):
     from easy_ai_clients.video._text_to_video._apis import falai as provider
 

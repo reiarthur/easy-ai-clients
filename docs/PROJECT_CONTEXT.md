@@ -65,7 +65,7 @@ pip install -e ".[dev]"
 ```
 
 The package version is defined in both `pyproject.toml` and
-`src/easy_ai_clients/__init__.py`. Both currently show `0.11.0`.
+`src/easy_ai_clients/__init__.py`. Both currently show `0.12.0`.
 
 ## Repository Structure Summary
 
@@ -90,7 +90,7 @@ The package version is defined in both `pyproject.toml` and
 | `src/easy_ai_clients/audio/` | Speech synthesis, transcription, transcription preprocessing, cost update, and voice helpers | `docs/audio/`, `tests/test_transcription_contract.py` |
 | `src/easy_ai_clients/image/` | Image generation, editing, remixing, analysis, image input handling, and cost helpers | `docs/image/`, `tests/test_dispatchers.py` |
 | `src/easy_ai_clients/music/` | Narrow validated music dispatcher, provider adapters, model registry, options catalog, style presets, and lyrics prompt builder | `docs/music/`, `tests/test_music_*.py` |
-| `src/easy_ai_clients/video/` | Video operation dispatchers, async helpers, provider adapters, HeyGen resources, and video cost helpers | `docs/video/`, `tests/test_video_contract.py`, `tests/test_video_async_refs.py` |
+| `src/easy_ai_clients/video/` | Video operation dispatchers, async helpers, provider adapters, HeyGen resources, Replicate avatar-video support, and video cost helpers | `docs/video/`, `tests/test_video_contract.py`, `tests/test_video_async_refs.py` |
 | `src/easy_ai_clients/_heygen.py` | Shared HeyGen auth, JSON request, asset, polling, status, and download helpers | `src/easy_ai_clients/video/`, `src/easy_ai_clients/media/`, `src/easy_ai_clients/webhooks/`, `src/easy_ai_clients/account/` |
 | `src/easy_ai_clients/media/` | Provider asset upload/delete dispatcher; currently HeyGen-backed | `docs/media/heygen.md` |
 | `src/easy_ai_clients/webhooks/` | Provider webhook endpoint and event dispatcher; currently HeyGen-backed | `docs/webhooks/heygen.md` |
@@ -226,6 +226,7 @@ a private dotenv file. If it is unset, current live-test helpers look for
 | `MUSIC_API_TIMEOUT` | Optional music-provider HTTP timeout override; `.env.example` uses `60` |
 | `OPENAI_API_KEY` | OpenAI text, audio, and image operations |
 | `OPENROUTER_API_KEY` | OpenRouter text, audio, image, and catalog/cost lookup paths |
+| `REPLICATE_API_TOKEN` | Replicate avatar-video predictions |
 | `RUNWARE_API_KEY` | Runware music generation |
 | `RUNWAYML_API_SECRET` | Runway audio, image, video, avatar, and upload operations |
 | `SPEECHMATICS_API_KEY` | Speechmatics transcription |
@@ -251,8 +252,11 @@ Cohere, Groq, Mistral, DeepSeek, DeepInfra, Hugging Face, OpenRouter, Together,
 Fireworks, Fal.ai, Runway, Runware, deAPI, HeyGen, xAI, ElevenLabs, Deepgram,
 Speechmatics, Stability AI, and Black Forest Labs.
 
-Provider integrations should not be exercised in ordinary unit tests. Live
-tests are gated and require explicit environment variables.
+The video avatar-video surface includes the Replicate
+`prunaai/p-video-avatar` prediction adapter through `api="replicate"`.
+
+Provider integrations should not be exercised in ordinary unit tests. Live tests
+are gated and require explicit environment variables.
 
 ## Frontend Or UI
 

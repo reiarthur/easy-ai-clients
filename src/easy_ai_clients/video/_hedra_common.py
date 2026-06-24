@@ -79,6 +79,7 @@ for key, value in MODEL_DATA.items():
     MODEL_ALIASES[key] = key
     MODEL_ALIASES[value["id"]] = key
     MODEL_ALIASES[value["name"].lower()] = key
+MODEL_ALIASES["hedra_avatar"] = "hedra-avatar"
 
 
 def resolve_model(model, default_key, operation):

@@ -18,10 +18,19 @@ from ..pre_processing import prepare_avatar_video
 PROVIDER = "falai"
 ENV_NAME = "FAL_KEY"
 DEFAULT_MODEL = "fal-ai/longcat-single-avatar/image-audio-to-video"
-COST_SOURCE = "fal_model_pricing_snapshot_2026-05-14"
+COST_SOURCE = "fal_model_pricing_snapshot_2026-06-24"
+
+MODEL_ALIASES = {
+    "fal_omnihuman_v1_5": "fal-ai/bytedance/omnihuman/v1.5",
+    "fal_veed_fabric_1_0": "veed/fabric-1.0",
+}
 
 DOCUMENTED_MODEL_PRICING = {
-    "veed/fabric-1.0": {"price_usd": 0.00017, "unit": "compute_seconds"},
+    "fal-ai/bytedance/omnihuman/v1.5": {"price_usd": 0.16, "unit": "seconds"},
+    "veed/fabric-1.0": {
+        "unit": "resolution_seconds",
+        "prices_usd": {"480p": 0.08, "720p": 0.15},
+    },
     "veed/fabric-1.0/fast": {"price_usd": 0.00017, "unit": "compute_seconds"},
     "fal-ai/flashtalk": {"price_usd": 0.02, "unit": "seconds"},
     DEFAULT_MODEL: {"price_usd": 0.15, "unit": "longcat_units"},
@@ -33,14 +42,45 @@ DOCUMENTED_MODEL_PRICING = {
     "fal-ai/creatify/aurora": {"price_usd": 1.0, "unit": "units"},
 }
 
-COMMON_OPTIONS = {"model", "timeout_seconds", "poll_interval_seconds", "extra_payload", *FAL_ESTIMATE_OPTIONS}
+COMMON_OPTIONS = {
+    "model",
+    "timeout_seconds",
+    "poll_interval_seconds",
+    "extra_payload",
+    "billing_duration_seconds",
+    "duration_seconds",
+    "duration",
+    "prompt",
+    *FAL_ESTIMATE_OPTIONS,
+}
 
 
 def _selected_model(kwargs):
-    return kwargs.get("model", DEFAULT_MODEL)
+    selected = kwargs.get("model", DEFAULT_MODEL)
+    return MODEL_ALIASES.get(str(selected).strip(), selected)
 
 
 def _build_payload(model, prepared, kwargs):
+    if model == "fal-ai/bytedance/omnihuman/v1.5":
+        payload = {
+            "image_url": prepared["image"],
+            "audio_url": prepared["audio"],
+            "resolution": kwargs.get("resolution", "720p"),
+            "turbo_mode": kwargs.get("turbo_mode", True),
+        }
+        prompt = kwargs.get("prompt") or prepared["text"]
+        if prompt:
+            payload["prompt"] = prompt
+        return _forward_extra_payload(payload, kwargs)
+
+    if model == "veed/fabric-1.0":
+        payload = {
+            "image_url": prepared["image"],
+            "audio_url": prepared["audio"],
+            "resolution": kwargs.get("resolution", "480p"),
+        }
+        return _forward_extra_payload(payload, kwargs)
+
     payload = {}
     if prepared["image"]:
         payload["image_url"] = prepared["image"]
@@ -52,9 +92,17 @@ def _build_payload(model, prepared, kwargs):
         if name not in COMMON_OPTIONS and name not in payload and value is not None:
             payload[name] = value
     if "extra_payload" in kwargs:
-        from ..._shared import merge_extra_payload
+        payload = _forward_extra_payload(payload, kwargs)
+    return payload
 
-        payload = merge_extra_payload(payload, kwargs)
+
+def _forward_extra_payload(payload, kwargs):
+    from ..._shared import merge_extra_payload
+
+    payload = merge_extra_payload(payload, kwargs)
+    for name, value in kwargs.items():
+        if name not in COMMON_OPTIONS and name not in payload and value is not None:
+            payload[name] = value
     return payload
 
 
@@ -67,6 +115,9 @@ def _quantity_for_unit(unit, kwargs):
         return float(value) if value is not None else None
     if unit == "units":
         value = kwargs.get("billing_units", kwargs.get("units"))
+        return float(value) if value is not None else None
+    if unit == "resolution_seconds":
+        value = kwargs.get("billing_duration_seconds", kwargs.get("duration_seconds", kwargs.get("duration")))
         return float(value) if value is not None else None
     if unit == "longcat_units":
         if kwargs.get("billing_units") is not None:
@@ -91,6 +142,29 @@ def _cost(model, kwargs):
             "cost_reason": f"No documented pricing metadata is available for fal.ai model `{model}`.",
         }
     pricing = DOCUMENTED_MODEL_PRICING[model]
+    if pricing["unit"] == "resolution_seconds":
+        quantity = _quantity_for_unit(pricing["unit"], kwargs)
+        resolution = kwargs.get("resolution", "480p")
+        price = pricing["prices_usd"].get(resolution)
+        if quantity is None or price is None:
+            return {
+                "cost_usd": 0.0,
+                "cost_is_estimated": True,
+                "cost_source": "unavailable",
+                "cost_reason": (
+                    f"fal.ai pricing for `{model}` requires duration and a supported "
+                    f"resolution. Supported resolutions: {', '.join(sorted(pricing['prices_usd']))}."
+                ),
+            }
+        return {
+            "cost_usd": price * quantity,
+            "cost_is_estimated": True,
+            "cost_source": COST_SOURCE,
+            "cost_reason": (
+                "fal.ai pricing is estimated from documented per-second pricing by "
+                "resolution; usage reconciliation is not performed during safe wrapper execution."
+            ),
+        }
     quantity = _quantity_for_unit(pricing["unit"], kwargs)
     if quantity is None:
         return {
@@ -184,7 +258,7 @@ def generate_avatar_video(
 
 
 def get_generation_status(request_id, **kwargs):
-    model = kwargs.get("model", DEFAULT_MODEL)
+    model = _selected_model(kwargs)
     api_key = require_env(ENV_NAME, "fal.ai")
     refs = merge_async_refs(None, kwargs, **fal_async_refs({}, model, request_id))
     raw = fal_get_status(
@@ -206,7 +280,7 @@ def get_generation_status(request_id, **kwargs):
 
 
 def get_generation_result(request_id, output_path=None, **kwargs):
-    model = kwargs.get("model", DEFAULT_MODEL)
+    model = _selected_model(kwargs)
     cost = _cost(model, kwargs)
     api_key = require_env(ENV_NAME, "fal.ai")
     refs = merge_async_refs(None, kwargs, **fal_async_refs({}, model, request_id))
