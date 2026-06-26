@@ -369,19 +369,97 @@ Return keys:
 - `cost_details`
 - `metadata`
 
-`style` must be an exact preset id. Use `prompt` for direct musical direction.
-If both are passed, `prompt` wins. The public result does not include raw
-provider responses, credentials, auth headers, audio URLs, or large audio
-payloads.
+`style` must be an exact preset id. Presets expose:
+
+- `style_prompts.small`, `style_prompts.medium`, and `style_prompts.large`.
+- `voice_presets.small`, `voice_presets.medium`, and `voice_presets.large`,
+  each with `male` and `female`.
+- `voice_presets.default_gender`.
+
+Use `prompt` for direct musical direction. If both `style` and `prompt` are
+passed, `prompt` replaces preset style and voice guidance after normal prompt
+validation.
+
+By default, generation starts with `large` style and `large` voice prompts.
+When a provider raises `MusicInputLimitError`, the router retries preset prompt
+sizes in this order before returning the normal repair error:
+
+1. `style_prompts.large` + `voice_presets.large`
+2. `style_prompts.large` + `voice_presets.medium`
+3. `style_prompts.medium` + `voice_presets.medium`
+4. `style_prompts.medium` + `voice_presets.small`
+5. `style_prompts.small` + `voice_presets.small`
+
+If all preset-size attempts exceed provider limits, the router retries
+`large` + `large` once so the existing `MusicInputLimitError` repair data is
+preserved.
+
+ElevenLabs is the exception to the initial voice size: preset-based generation
+uses `style_prompts.large` with `voice_presets.small` by default to keep direct
+music prompts concise. Other APIs keep the default `large` + `large` start.
+
+Duration is normalized per provider/model:
+
+| API | Model key | Native model | Min | Max | Missing or invalid `duration` | Provider application |
+| --- | --- | --- | ---: | ---: | --- | --- |
+| `deapi` | `ace_step_v1_5_turbo` | `AceStep_1_5_Turbo` | `10s` | `300s` | Uses `60s` | Sent as `duration` |
+| `deapi` | `ace_step_1_5_xl_turbo_int8` | `AceStep_1_5_XL_Turbo_INT8` | `10s` | `300s` | Uses `60s` | Sent as `duration` |
+| `elevenlabs` | `eleven_music` | `music_v2` | `3s` | `600s` | Omits duration | Sent as `music_length_ms` |
+| `elevenlabs` | `eleven_music_v2` | `music_v2` | `3s` | `600s` | Omits duration | Sent as `music_length_ms` |
+| `elevenlabs` | `music_v2` | `music_v2` | `3s` | `600s` | Omits duration | Sent as `music_length_ms` |
+| `google` | `lyria_3_clip_preview` | `lyria-3-clip-preview` | `30s` | `30s` | Ignores duration | Not sent |
+| `google` | `lyria_3_pro_preview` | `lyria-3-pro-preview` | `15s` | `180s` | Omits duration | Added as prompt text |
+| `runware` | `ace_step_v1_5_turbo` | `runware:ace-step@v1.5-turbo` | `30s` | `300s` | Uses `60s` | Sent as `duration` |
+| `runware` | `ace_step_v1_5_xl_base` | `runware:ace-step@v1.5-xl-base` | `30s` | `300s` | Uses `60s` | Sent as `duration` |
+| `runware` | `ace_step_v1_5_xl_sft` | `runware:ace-step@v1.5-xl-sft` | `30s` | `300s` | Uses `60s` | Sent as `duration` |
+| `runware` | `ace_step_v1_5_xl_turbo` | `runware:ace-step@v1.5-xl-turbo` | `30s` | `300s` | Uses `60s` | Sent as `duration` |
+
+Numeric `duration` values may be `int`, `float`, or numeric strings. Floats
+are truncated to `int` and then clamped. `bool`, empty strings, non-numeric
+text, lists, and objects are treated as missing values.
+
+Use `gender="male"`, `gender="female"`, `gender="both"`, or
+`voice_description="..."` for prompt-level vocal guidance. Public
+`negative_prompt` is not supported for music.
+
+When prompt or lyric input exceeds provider limits, `music.generate(...)`
+raises `music.MusicInputLimitError` before generation:
+
+| API | Field | Limit | Unit |
+| --- | --- | ---: | --- |
+| `deapi` | `caption` / prompt | `3000` | characters |
+| `deapi` | `lyrics` | `3000` | characters |
+| `elevenlabs` | final prompt with lyrics appended | `4100` | characters |
+| `google` | final `contents` payload | `131072` | tokens via `countTokens` |
+| `runware` | `positivePrompt` | `3000` | characters |
+| `runware` | `settings.lyrics` | `3000` | characters |
+
+The exception exposes `to_dict()` and `repair_prompts` so callers can ask a
+text model to shorten only the fields that exceeded the limit.
+
+The public result does not include raw provider responses, credentials, auth
+headers, audio URLs, or large audio payloads.
 
 Local helper functions do not call providers:
+
+When `build_lyrics_prompt(...)` receives a valid `style`, it embeds the
+preset `style_prompts.large` text as lyric-writing guidance instead of exposing
+only the style ID.
+
+When called as `build_lyrics_prompt(..., api="elevenlabs")`, the helper keeps
+the same return shape but uses `voice_presets.small`, asks for short singable
+lines, and avoids vocal-role tags such as `[Male Lead]`, `[Female Lead]`, and
+`[Duet]`.
 
 ```python
 options = music.get_generation_options(api="runware")
 styles = music.get_style_presets(fields=["id", "description"])
 lyrics_prompt = music.build_lyrics_prompt(
-    60,
-    reference_text="Brazilian Portuguese pop rock with a hopeful chorus.",
+    "Brazilian Portuguese pop rock with a hopeful chorus.",
+    duration=60,
+    style="rock",
+    gender="female",
+    api="elevenlabs",
 )
 ```
 
@@ -576,7 +654,7 @@ parameters can be passed before this library documents them.
 The music dispatcher is the exception to this broad forwarding behavior:
 `easy_ai_clients.music` uses an explicit validated provider/model matrix and
 rejects unsupported models, unknown styles, removed public kwargs, and
-unsupported `negative_prompt` usage before provider dispatch.
+public `negative_prompt` usage before provider dispatch.
 
 ```python
 from easy_ai_clients import image, text

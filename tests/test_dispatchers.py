@@ -6,6 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
+_ONE_PIXEL_PNG_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
+
 
 def test_text_generate_routes_to_provider(monkeypatch):
     from easy_ai_clients import text
@@ -329,6 +334,179 @@ def test_image_openai_forwards_undocumented_model_and_kwargs_to_provider_payload
     assert result["base64"] == "abc"
     assert captured["model"] == "future-image-model"
     assert captured["extra_body"]["future_knob"] == "enabled"
+
+
+def test_image_openrouter_analyze_requires_explicit_model_without_api_call(monkeypatch):
+    from easy_ai_clients import image
+    from easy_ai_clients.image._analyze._apis import openrouter as provider
+
+    def fail_api_key(*args, **kwargs):
+        raise AssertionError("OpenRouter API key should not be requested without model.")
+
+    def fail_analyze_call(*args, **kwargs):
+        raise AssertionError("OpenRouter API should not be called without model.")
+
+    monkeypatch.setattr(provider, "get_provider_api_key", fail_api_key)
+    monkeypatch.setattr(provider, "_analyze_image", fail_analyze_call)
+
+    result = image.analyze("describe", "not-an-image", api="openrouter")
+
+    assert result["request_id"] == ""
+    assert result["cost_usd"] == 0.0
+    assert result["cost_source"] == "unavailable"
+    assert result["cost_is_estimated"] is False
+    assert result["input_text"] == "describe"
+    assert "requires an explicit model" in result["output"]
+    assert result["error"]["provider"] == "openrouter"
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected_cost"),
+    [
+        ({"cost": 0.0012}, 0.0012),
+        ({"total_cost": 0.0042}, 0.0042),
+    ],
+)
+def test_image_openrouter_analyze_forwards_model_kwargs_and_usage_cost(
+    monkeypatch,
+    usage,
+    expected_cost,
+):
+    from easy_ai_clients import image
+    from easy_ai_clients.image._analyze._apis import openrouter as provider
+    from easy_ai_clients.image._common import openrouter_utils, provider_utils
+
+    captured = {}
+
+    def fake_request(method, url, **kwargs):
+        captured["method"] = method
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return SimpleNamespace(
+            headers={},
+            json=lambda: {
+                "id": "gen-usage",
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": usage,
+            },
+        )
+
+    monkeypatch.setattr(provider, "get_provider_api_key", lambda *args, **kwargs: "or-test")
+    monkeypatch.setattr(openrouter_utils, "request", fake_request)
+    monkeypatch.setattr(provider_utils, "request", fake_request)
+
+    result = image.analyze(
+        "describe",
+        _ONE_PIXEL_PNG_DATA_URL,
+        api="openrouter",
+        model="provider/exact-vision-model",
+        max_completion_tokens=7,
+        stream=False,
+        temperature=0.2,
+        fal_payload={"provider": {"allow_fallbacks": False}},
+        future_knob={"enabled": True},
+    )
+
+    assert result["output"] == "ok"
+    assert result["request_id"] == "gen-usage"
+    assert result["cost_usd"] == pytest.approx(expected_cost)
+    assert result["cost_source"] == "provider_response"
+    assert result["cost_is_estimated"] is False
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/chat/completions")
+    assert captured["json"]["model"] == "provider/exact-vision-model"
+    assert captured["json"]["max_completion_tokens"] == 7
+    assert captured["json"]["stream"] is False
+    assert captured["json"]["temperature"] == 0.2
+    assert captured["json"]["provider"] == {"allow_fallbacks": False}
+    assert captured["json"]["future_knob"] == {"enabled": True}
+
+
+def test_image_openrouter_analyze_looks_up_cost_by_request_id(monkeypatch):
+    from easy_ai_clients import image
+    from easy_ai_clients.image._analyze._apis import openrouter as provider
+    from easy_ai_clients.image._common import openrouter_utils, provider_utils
+
+    calls = []
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        if url.endswith("/chat/completions"):
+            return SimpleNamespace(
+                headers={},
+                json=lambda: {
+                    "id": "gen-lookup",
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {},
+                },
+            )
+        return SimpleNamespace(
+            headers={},
+            json=lambda: {"data": {"id": "gen-lookup", "total_cost": 0.009}},
+        )
+
+    monkeypatch.setattr(provider, "get_provider_api_key", lambda *args, **kwargs: "or-test")
+    monkeypatch.setattr(openrouter_utils, "request", fake_request)
+    monkeypatch.setattr(provider_utils, "request", fake_request)
+
+    result = image.analyze(
+        "describe",
+        _ONE_PIXEL_PNG_DATA_URL,
+        api="openrouter",
+        model="provider/exact-vision-model",
+    )
+
+    assert result["output"] == "ok"
+    assert result["request_id"] == "gen-lookup"
+    assert result["cost_usd"] == pytest.approx(0.009)
+    assert result["cost_source"] == "openrouter_generation_lookup"
+    assert result["cost_is_estimated"] is False
+    assert calls[1][0] == "GET"
+    assert calls[1][1].endswith("/generation")
+    assert calls[1][2]["params"] == {"id": "gen-lookup"}
+
+
+def test_image_openrouter_update_cost_dispatcher_uses_snake_case_update_cost(monkeypatch):
+    from easy_ai_clients import image
+    from easy_ai_clients.image._analyze._apis import openrouter as provider
+    from easy_ai_clients.image._common import openrouter_utils, provider_utils
+
+    captured = {}
+
+    def fake_request(method, url, **kwargs):
+        captured["method"] = method
+        captured["url"] = url
+        captured["params"] = kwargs["params"]
+        return SimpleNamespace(
+            headers={},
+            json=lambda: {"data": {"id": "gen-refresh", "total_cost": 0.0123}},
+        )
+
+    monkeypatch.setattr(provider, "get_provider_api_key", lambda *args, **kwargs: "or-test")
+    monkeypatch.setattr(openrouter_utils, "request", fake_request)
+    monkeypatch.setattr(provider_utils, "request", fake_request)
+
+    result = image.update_cost(
+        "analyze",
+        {
+            "request_id": "gen-refresh",
+            "cost_usd": 0.0,
+            "cost_currency": "USD",
+            "cost_is_estimated": False,
+            "cost_source": "unavailable",
+            "cost_details": {},
+            "input_text": "describe",
+            "output": "ok",
+        },
+        api="openrouter",
+    )
+
+    assert result["cost_usd"] == pytest.approx(0.0123)
+    assert result["cost_source"] == "openrouter_generation_lookup"
+    assert result["cost_is_estimated"] is False
+    assert captured["method"] == "GET"
+    assert captured["url"].endswith("/generation")
+    assert captured["params"] == {"id": "gen-refresh"}
 
 
 def test_image_analyze_attaches_error_for_provider_error_output(monkeypatch):

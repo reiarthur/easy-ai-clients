@@ -6,6 +6,33 @@ from pathlib import Path
 
 STYLE_DIR = Path(__file__).resolve().parent / "styles"
 
+VALID_GENDERS = {"male", "female", "both"}
+PROMPT_SIZES = ("small", "medium", "large")
+
+GENERIC_VOICE_DESCRIPTIONS = {
+    "male": (
+        "Male lead vocal with clear diction, steady breath support, centered "
+        "pitch, and a natural balanced tone. Keep the lyric intelligible and "
+        "in front, using clean attacks, controlled sustain, subtle dynamic "
+        "shaping, restrained vibrato or small ornaments only where they "
+        "support the phrase, and clear releases at line endings."
+    ),
+    "female": (
+        "Female lead vocal with clear diction, steady breath support, centered "
+        "pitch, and a natural balanced tone. Keep the lyric intelligible and "
+        "in front, using clean attacks, controlled sustain, subtle dynamic "
+        "shaping, restrained vibrato or small ornaments only where they "
+        "support the phrase, and clean releases at line endings."
+    ),
+}
+
+MULTI_VOICE_GUIDANCE = (
+    "Use distinct male and female roles only where the lyric structure needs "
+    "them. Prefer section tags such as [Verse 1 - Male Lead], [Verse 2 - "
+    "Female Lead], and [Chorus - Duet]. Do not use line labels like Male: or "
+    "Female:."
+)
+
 _LANGUAGE_LABELS = {
     "pt-BR": "Brazilian Portuguese",
     "en-US": "English",
@@ -43,10 +70,6 @@ _RUNWARE_ACE_STEPS = {
     "runware:ace-step@v1.5-xl-base": 100,
     "runware:ace-step@v1.5-xl-turbo": 8,
     "runware:ace-step@v1.5-xl-sft": 80,
-}
-
-_RUNWARE_NEGATIVE_MODELS = {
-    "runware:ace-step@v1.5-xl-sft",
 }
 
 
@@ -127,6 +150,33 @@ def resolve_style(style):
     raise ValueError(f"Unknown style: {style}")
 
 
+def build_voice_guidance(
+    style=None,
+    gender=None,
+    voice_description=None,
+    voice_prompt_size="large",
+    role_tag_guidance=True,
+):
+    """Return prompt-ready voice guidance for style/gender inputs."""
+    style_preset = resolve_style(style)["style_preset"]
+    voice_prompt_size = _validate_prompt_size("voice_prompt_size", voice_prompt_size)
+    return _voice_guidance(
+        style_preset,
+        gender,
+        voice_description,
+        voice_prompt_size,
+        role_tag_guidance,
+    )
+
+
+def default_language_for_style(style):
+    """Return the preset default language for a style, when present."""
+    style_preset = resolve_style(style)["style_preset"]
+    if style_preset is None:
+        return None
+    return style_preset["default_language"]
+
+
 def build_generation_request(
     provider,
     model,
@@ -134,6 +184,8 @@ def build_generation_request(
     style=None,
     prompt=None,
     kwargs=None,
+    style_prompt_size="large",
+    voice_prompt_size="large",
 ):
     """Build a normalized local request without calling provider APIs.
 
@@ -145,47 +197,69 @@ def build_generation_request(
         prompt: Optional. Caller prompt. If provided with a preset, it replaces
             the preset-rendered prompt.
         kwargs: Optional. Caller kwargs. These override generated preset kwargs.
-            `language` is an adapter-only style override. `negative_prompt` is
-            accepted inside this dictionary.
+            `language`, `gender`, and `voice_description` are local prompt
+            controls consumed before provider dispatch.
+        style_prompt_size: Optional. Preset style prompt size. Accepted values:
+            - "small": Use the shortest style prompt.
+            - "medium": Use the medium style prompt.
+            - "large": Use the full style prompt. Defaults to "large".
+        voice_prompt_size: Optional. Preset voice prompt size. Accepted values:
+            - "small": Use the shortest voice prompt.
+            - "medium": Use the medium voice prompt.
+            - "large": Use the full voice prompt. Defaults to "large".
 
     Returns:
         A local request dictionary for `music.generate()`.
     """
     user_kwargs = dict(kwargs or {})
+    if "negative_prompt" in user_kwargs:
+        raise ValueError("negative_prompt is not supported for music")
+
     language_override = user_kwargs.pop("language", None)
-    user_negative_prompt_provided = "negative_prompt" in user_kwargs
-    user_negative_prompt = user_kwargs.pop("negative_prompt", None)
+    gender = user_kwargs.pop("gender", None)
+    voice_description = user_kwargs.pop("voice_description", None)
     user_prompt = _clean_prompt_text("prompt", prompt)
     user_prompt_provided = user_prompt is not None
-    if user_negative_prompt_provided:
-        user_negative_prompt = _clean_prompt_text("negative_prompt", user_negative_prompt)
 
     resolved = resolve_style(style)
     style_preset = resolved["style_preset"]
     language = _style_language(style_preset, language_override)
+    style_prompt_size = _validate_prompt_size("style_prompt_size", style_prompt_size)
+    voice_prompt_size = _validate_prompt_size("voice_prompt_size", voice_prompt_size)
+    if provider == "elevenlabs":
+        voice_prompt_size = "small"
+
+    voice_guidance = None
+    if not user_prompt_provided:
+        voice_guidance = _voice_guidance(
+            style_preset,
+            gender,
+            voice_description,
+            voice_prompt_size,
+            role_tag_guidance=provider != "elevenlabs",
+        )
 
     if style_preset is None:
         prompt = user_prompt
         generated_kwargs = {}
         style_source = "none"
     else:
-        prompt = user_prompt if user_prompt_provided else _provider_prompt(provider, model, style_preset, language)
+        if user_prompt_provided:
+            prompt = user_prompt
+        else:
+            prompt = _provider_prompt(
+                provider,
+                model,
+                style_preset,
+                language,
+                voice_guidance,
+                style_prompt_size,
+            )
         generated_kwargs = _provider_kwargs(provider, model, style_preset, language)
         style_source = "preset"
 
     if prompt is not None:
         generated_kwargs["prompt"] = prompt
-
-    if _supports_negative_prompt(provider, model):
-        negative_prompt = None
-        if user_negative_prompt_provided:
-            negative_prompt = user_negative_prompt
-        elif style_preset is not None:
-            negative_prompt = _render_negative_prompt(style_preset)
-        if negative_prompt is not None:
-            generated_kwargs["negative_prompt"] = negative_prompt
-    elif user_negative_prompt_provided:
-        generated_kwargs["negative_prompt"] = user_negative_prompt
 
     return {
         "lyrics": lyrics,
@@ -287,33 +361,112 @@ def _validate_language(language):
     return text
 
 
-def _provider_prompt(provider, model, style_preset, language):
+def _validate_gender(gender):
+    if gender is None:
+        return None
+    if not isinstance(gender, str):
+        raise ValueError("gender must be one of: male, female, both")
+    value = gender.strip().lower()
+    if value not in VALID_GENDERS:
+        raise ValueError("gender must be one of: male, female, both")
+    return value
+
+
+def _validate_prompt_size(parameter, value):
+    if not isinstance(value, str) or value not in PROMPT_SIZES:
+        accepted = ", ".join(PROMPT_SIZES)
+        raise ValueError(f"{parameter} must be one of: {accepted}")
+    return value
+
+
+def _voice_guidance(
+    style_preset,
+    gender,
+    voice_description,
+    voice_prompt_size="large",
+    role_tag_guidance=True,
+):
+    direct = _clean_prompt_text("voice_description", voice_description)
+    selected_gender = _validate_gender(gender)
+    if direct is not None:
+        if selected_gender == "both":
+            return _multi_voice_text(direct, direct, role_tag_guidance)
+        return direct
+
+    if style_preset is not None:
+        voice_presets = style_preset["voice_presets"]
+        selected_voice_prompts = voice_presets[voice_prompt_size]
+        if selected_gender == "both":
+            return _multi_voice_text(
+                selected_voice_prompts["male"],
+                selected_voice_prompts["female"],
+                role_tag_guidance,
+            )
+        if selected_gender in {"male", "female"}:
+            return selected_voice_prompts[selected_gender]
+        return selected_voice_prompts[voice_presets["default_gender"]]
+
+    if selected_gender == "both":
+        return _multi_voice_text(
+            GENERIC_VOICE_DESCRIPTIONS["male"],
+            GENERIC_VOICE_DESCRIPTIONS["female"],
+            role_tag_guidance,
+        )
+    if selected_gender in {"male", "female"}:
+        return GENERIC_VOICE_DESCRIPTIONS[selected_gender]
+    return None
+
+
+def _multi_voice_text(male_voice, female_voice, role_tag_guidance=True):
+    if not role_tag_guidance:
+        return (
+            f"Male voice: {male_voice} Female voice: {female_voice} "
+            "Let the two voices share the song naturally through call-and-response, "
+            "overlap, and chorus energy without labeling lines by singer gender."
+        )
+    return (
+        f"Male voice: {male_voice} Female voice: {female_voice} "
+        f"{MULTI_VOICE_GUIDANCE}"
+    )
+
+
+def _append_voice_guidance(prompt, voice_guidance):
+    if prompt is None or voice_guidance is None:
+        return prompt
+    return f"{prompt}\n\nVoice guidance: {voice_guidance}"
+
+
+def _provider_prompt(
+    provider,
+    model,
+    style_preset,
+    language,
+    voice_guidance,
+    style_prompt_size,
+):
     if provider == "deapi" and model in _DEAPI_ACE_STEP_MODELS:
         return _render_prompt(
             style_preset,
             language,
+            voice_guidance,
+            style_prompt_size,
             compact=True,
             max_chars=300,
         )
-    if provider == "google" and model == "lyria-3-clip-preview":
-        return _render_prompt(
-            style_preset,
-            language,
-            duration_seconds=30,
-        )
-    return _render_prompt(style_preset, language)
+    if provider == "google" and model in _GOOGLE_LYRIA_MODELS:
+        return _render_prompt(style_preset, language, voice_guidance, style_prompt_size)
+    return _render_prompt(style_preset, language, voice_guidance, style_prompt_size)
 
 
 def _render_prompt(
     style_preset,
     language,
+    voice_guidance,
+    style_prompt_size,
     compact=False,
-    duration_seconds=None,
     max_chars=None,
 ):
     language = _language_label(language)
-    vocal = style_preset["default_vocal"]["description"]
-    duration = duration_seconds or style_preset["duration_seconds"]
     bpm = style_preset["tempo_bpm"]
     key_scale = style_preset["key_scale"]
 
@@ -321,29 +474,21 @@ def _render_prompt(
         return _render_compact_prompt(
             style_preset,
             language,
-            vocal,
-            duration,
+            voice_guidance,
+            style_prompt_size,
             bpm,
             key_scale,
             max_chars,
         )
 
-    instruments = ", ".join(style_preset["instrumentation"][:5])
-    arrangement = ", ".join(style_preset["arrangement"])
-    mood = ", ".join(style_preset["mood"])
     parts = [
-        style_preset["style_prompt"],
-        vocal,
+        style_preset["style_prompts"][style_prompt_size],
+        voice_guidance,
         f"{language} lyrics",
         f"{bpm} BPM",
         key_scale,
         f"{style_preset['time_signature']}/4 time",
-        f"target duration around {duration} seconds",
         f"{style_preset['energy']} energy",
-        f"{mood} mood",
-        instruments,
-        arrangement,
-        style_preset["mix_target"],
     ]
 
     text = _sentence(parts)
@@ -352,8 +497,8 @@ def _render_prompt(
     return _render_compact_prompt(
         style_preset,
         language,
-        vocal,
-        duration,
+        voice_guidance,
+        style_prompt_size,
         bpm,
         key_scale,
         max_chars,
@@ -363,65 +508,49 @@ def _render_prompt(
 def _render_compact_prompt(
     style_preset,
     language,
-    vocal,
-    duration,
+    voice_guidance,
+    style_prompt_size,
     bpm,
     key_scale,
     max_chars,
 ):
-    instruments = ", ".join(style_preset["instrumentation"][:4])
+    selected_style_prompt = style_preset["style_prompts"][style_prompt_size]
     critical = [
-        style_preset["style_family"],
-        vocal,
+        selected_style_prompt,
+        voice_guidance,
         f"{language} lyrics",
         f"{bpm} BPM",
         key_scale,
-        instruments,
-        style_preset["mix_target"],
-    ]
-    optional = [
-        f"{style_preset['time_signature']}/4 time",
-        f"around {duration} seconds",
     ]
 
-    text = _sentence(critical + optional)
+    text = _sentence(critical)
     if max_chars is None or len(text) <= max_chars:
         return text
 
     shorter_critical = [
-        style_preset["style_family"],
-        vocal,
+        _clip(selected_style_prompt, 130),
+        _clip(voice_guidance, 78),
         f"{language} lyrics",
         f"{bpm} BPM",
         key_scale,
-        ", ".join(style_preset["instrumentation"][:2]),
-        _clip(style_preset["mix_target"], 72),
     ]
     text = _sentence(shorter_critical)
     if len(text) <= max_chars:
         return text
 
     shortest_critical = [
-        _clip(style_preset["style_family"], 42),
-        _clip(vocal, 58),
+        _clip(selected_style_prompt, 84),
+        _clip(voice_guidance, 58),
         f"{language} lyrics",
         f"{bpm} BPM",
         key_scale,
-        _clip(style_preset["instrumentation"][0], 42),
-        _clip(style_preset["mix_target"], 54),
     ]
     return _clip(_sentence(shortest_critical), max_chars)
-
-
-def _render_negative_prompt(style_preset):
-    traits = style_preset.get("negative_traits") or []
-    return ", ".join(traits) or None
 
 
 def _provider_kwargs(provider, model, style_preset, language):
     if provider == "deapi" and model in _DEAPI_ACE_STEP_MODELS:
         return {
-            "duration": style_preset["duration_seconds"],
             "steps": 8,
             "bpm": style_preset["tempo_bpm"],
             "key_scale": style_preset["key_scale"],
@@ -429,27 +558,20 @@ def _provider_kwargs(provider, model, style_preset, language):
             "vocal_language": _ace_step_language(language),
         }
 
-    controls = style_preset["generation_controls"]
-
-    if provider == "elevenlabs" and model == "music_v1":
-        return {
-            "duration": style_preset["duration_seconds"],
-            "_force_instrumental": controls["instrumental"],
-        }
+    if provider == "elevenlabs" and model == "music_v2":
+        return {}
 
     if provider == "google" and model in _GOOGLE_LYRIA_MODELS:
-        return {"duration": style_preset["duration_seconds"]}
+        return {}
 
     if provider == "runware" and model in _RUNWARE_ACE_STEPS:
-        kwargs = {
-            "duration": style_preset["duration_seconds"],
+        return {
             "steps": _RUNWARE_ACE_STEPS[model],
             "bpm": style_preset["tempo_bpm"],
             "key_scale": style_preset["key_scale"],
             "time_signature": style_preset["time_signature"],
             "vocal_language": _ace_step_language(language),
         }
-        return kwargs
 
     return {}
 
@@ -458,10 +580,6 @@ def _merge_kwargs(generated_kwargs, user_kwargs):
     merged = dict(generated_kwargs)
     merged.update(user_kwargs)
     return merged
-
-
-def _supports_negative_prompt(provider, model):
-    return provider == "runware" and model in _RUNWARE_NEGATIVE_MODELS
 
 
 def _language_label(language):
@@ -480,8 +598,8 @@ def _sentence(parts):
 
 
 def _clip(text, max_chars):
+    if text is None:
+        return ""
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 3].rstrip(" ,.;:") + "..."
-
-

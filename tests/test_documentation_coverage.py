@@ -119,7 +119,7 @@ def test_environment_template_matches_documented_runtime_variables():
 
 
 def test_music_provider_docs_match_model_registry():
-    from easy_ai_clients.music._model_registry import DEFAULT_MODELS, MODEL_ALIASES
+    from easy_ai_clients.music._model_registry import DEFAULT_MODEL_KEYS, MODEL_ALIASES
 
     for provider, aliases in MODEL_ALIASES.items():
         provider_doc = DOCS / "music" / f"{provider}.md"
@@ -128,7 +128,7 @@ def test_music_provider_docs_match_model_registry():
         for model_key, native_model in aliases.items():
             assert native_model in markdown
             assert model_key in markdown
-            expected_default = "Yes" if native_model == DEFAULT_MODELS[provider] else "No"
+            expected_default = "Yes" if model_key == DEFAULT_MODEL_KEYS[provider] else "No"
             matching_rows = [
                 line
                 for line in markdown.splitlines()

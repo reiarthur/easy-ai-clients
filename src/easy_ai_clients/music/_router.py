@@ -3,12 +3,14 @@
 import importlib
 
 from ._common import normalize_cost, sanitize
+from ._errors import MusicInputLimitError
 from ._model_registry import PROVIDERS, resolve_model
 from ._style_adapter import build_generation_request
 
 REMOVED_PUBLIC_KWARGS = {
     "audio_settings",
     "include_cost",
+    "negative_prompt",
     "number_results",
     "output_format",
     "output_type",
@@ -29,6 +31,13 @@ PUBLIC_GENERATION_KEYS = (
     "cost_is_estimated",
     "cost_details",
     "metadata",
+)
+PROMPT_SIZE_ATTEMPTS = (
+    ("large", "large"),
+    ("large", "medium"),
+    ("medium", "medium"),
+    ("medium", "small"),
+    ("small", "small"),
 )
 
 
@@ -58,6 +67,58 @@ def generate(lyrics, model=None, *, api, style=None, prompt=None, **kwargs):
     _reject_removed_public_kwargs(kwargs)
 
     native_model, model_key = resolve_model(api, model)
+    module = _load_api(api)
+    generation = _generate_with_adaptive_prompt_size(
+        module,
+        api,
+        native_model,
+        lyrics,
+        style,
+        prompt,
+        kwargs,
+    )
+    generation["model_key"] = model_key
+    return _public_generation(generation)
+
+
+def _generate_with_adaptive_prompt_size(module, api, native_model, lyrics, style, prompt, kwargs):
+    attempts = _prompt_size_attempts(style, prompt)
+    seen_requests = set()
+    can_retry_with_large_prompt = len(attempts) > 1
+
+    for style_prompt_size, voice_prompt_size in attempts:
+        request = build_generation_request(
+            provider=api,
+            model=native_model,
+            lyrics=lyrics,
+            style=style,
+            prompt=prompt,
+            kwargs=kwargs,
+            style_prompt_size=style_prompt_size,
+            voice_prompt_size=voice_prompt_size,
+        )
+        if request["kwargs"].get("prompt") is None:
+            raise ValueError("style or prompt is required")
+
+        request_key = repr((request["lyrics"], request["model"], request["kwargs"]))
+        if request_key in seen_requests:
+            continue
+        seen_requests.add(request_key)
+
+        try:
+            return module.generate(
+                lyrics=request["lyrics"],
+                model=request["model"],
+                **request["kwargs"],
+            )
+        except MusicInputLimitError:
+            if not can_retry_with_large_prompt:
+                raise
+            continue
+
+    if not can_retry_with_large_prompt:
+        raise RuntimeError("music generation did not produce a provider request")
+
     request = build_generation_request(
         provider=api,
         model=native_model,
@@ -65,18 +126,26 @@ def generate(lyrics, model=None, *, api, style=None, prompt=None, **kwargs):
         style=style,
         prompt=prompt,
         kwargs=kwargs,
+        style_prompt_size="large",
+        voice_prompt_size="large",
     )
     if request["kwargs"].get("prompt") is None:
         raise ValueError("style or prompt is required")
-
-    module = _load_api(api)
-    generation = module.generate(
+    return module.generate(
         lyrics=request["lyrics"],
         model=request["model"],
         **request["kwargs"],
     )
-    generation["model_key"] = model_key
-    return _public_generation(generation)
+
+
+def _prompt_size_attempts(style, prompt):
+    if style is None or _has_direct_prompt(prompt):
+        return (("large", "large"),)
+    return PROMPT_SIZE_ATTEMPTS
+
+
+def _has_direct_prompt(prompt):
+    return isinstance(prompt, str) and bool(prompt.strip())
 
 
 def get_status(generation, *, api=None):

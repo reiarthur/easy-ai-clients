@@ -6,15 +6,18 @@ from .._common import (
     auth_header,
     complete_local_job_generation,
     format_response_error,
+    normalize_duration,
+    raise_input_limit_error,
     reject_parameter_present,
     reject_unknown_kwargs,
     save_bytes,
     start_local_job,
+    text_limit_field,
     update_local_job_generation,
 )
 
 MODELS = {
-    "music_v1": {
+    "music_v2": {
         "endpoint": "https://api.elevenlabs.io/v1/music",
         "status_endpoint": None,
         "result_endpoint": None,
@@ -22,11 +25,23 @@ MODELS = {
     },
 }
 
-ELEVENLABS_OUTPUT_FORMAT = "mp3_44100_128"
+ELEVENLABS_OUTPUT_FORMAT = "auto"
+ELEVENLABS_OUTPUT_EXTENSION = "mp3"
 ELEVENLABS_USD_PER_MINUTE = 0.150
+ELEVENLABS_AUDIO_CONTENT_TYPES = {
+    "application/octet-stream",
+    "audio/aac",
+    "audio/flac",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/ogg",
+    "audio/wav",
+    "audio/webm",
+    "audio/x-m4a",
+}
 
 
-def generate(lyrics, model="music_v1", **kwargs):
+def generate(lyrics, model="music_v2", **kwargs):
     """Submit one ElevenLabs Music job through a local background worker.
 
     ElevenLabs returns binary audio from the compose request. This wrapper starts
@@ -36,12 +51,14 @@ def generate(lyrics, model="music_v1", **kwargs):
     Args:
         lyrics: Required. Song lyrics embedded in the provider prompt.
         model: Optional. Accepted values:
-            - "music_v1": ElevenLabs Music v1 model.
+            - "music_v2": ElevenLabs Music v2 model.
         **kwargs: Optional provider parameters:
             - `prompt`: Required. Music prompt.
             - `negative_prompt`: Not supported by ElevenLabs Music compose.
               Passing a value raises `ValueError`.
-            - `duration`: Song duration in seconds. Defaults to `60`.
+            - `duration`: Optional song duration in seconds. Valid numeric
+              values are clamped to `3..600` and sent as `music_length_ms`.
+              Missing or invalid values omit `music_length_ms`.
 
     Returns:
         A normalized generation dictionary.
@@ -56,25 +73,18 @@ def generate(lyrics, model="music_v1", **kwargs):
     reject_parameter_present(kwargs, "negative_prompt", "elevenlabs")
     if prompt is None:
         raise ValueError("prompt is required for elevenlabs")
-    reject_unknown_kwargs(
-        kwargs,
-        {
-            "duration",
-            "_force_instrumental",
-        },
-    )
+    duration = normalize_duration(kwargs.pop("duration", None), 3, 600, default=None)
+    reject_unknown_kwargs(kwargs, set())
 
-    extension = ELEVENLABS_OUTPUT_FORMAT.split("_", 1)[0]
-    _validate_kwargs(kwargs)
-    duration = kwargs.get("duration", 60)
     cost = _cost_for_duration(duration)
+    final_prompt = _prompt_with_lyrics(prompt, lyrics)
+    _check_input_limits(model, final_prompt)
 
     def worker(output_path):
         payload = {"model_id": model}
-        payload["music_length_ms"] = int(duration * 1000)
-        payload["prompt"] = f"{prompt}\n\nUse these lyrics:\n{lyrics}"
-        if "_force_instrumental" in kwargs:
-            payload["force_instrumental"] = kwargs["_force_instrumental"]
+        if duration is not None:
+            payload["music_length_ms"] = int(duration * 1000)
+        payload["prompt"] = final_prompt
         response = requests.post(
             MODELS[model]["endpoint"],
             headers=_headers(),
@@ -84,7 +94,7 @@ def generate(lyrics, model="music_v1", **kwargs):
         )
         if response.status_code >= 400:
             raise ApiRequestError(format_response_error(response))
-        save_bytes(response.content, output_path)
+        save_bytes(_audio_content(response), output_path)
         return {
             "song_id": response.headers.get("X-Song-Id"),
             "content_type": response.headers.get("Content-Type"),
@@ -95,14 +105,11 @@ def generate(lyrics, model="music_v1", **kwargs):
         "elevenlabs",
         model,
         worker,
-        extension,
+        ELEVENLABS_OUTPUT_EXTENSION,
         cost_usd=cost,
-        cost_source="official_pricing_table",
-        cost_is_estimated=True,
-        cost_details={
-            "duration_seconds": duration,
-            "usd_per_minute": ELEVENLABS_USD_PER_MINUTE,
-        },
+        cost_source="official_pricing_table" if cost is not None else None,
+        cost_is_estimated=cost is not None,
+        cost_details=_cost_details(duration),
     )
 
 
@@ -142,14 +149,76 @@ def _headers():
     return headers
 
 
-def _validate_kwargs(kwargs):
-    duration_ms = int(kwargs.get("duration", 60) * 1000)
-    if not 3000 <= duration_ms <= 600000:
-        raise ValueError("duration must be between 3 and 600 seconds")
+def _prompt_with_lyrics(prompt, lyrics):
+    return "\n".join(
+        [
+            prompt,
+            "",
+            "Lyrics language and delivery:",
+            "- Use the language indicated by the lyrics and music guidance.",
+            "- Sing with natural native diction and preserve complete word endings.",
+            "- Respect accents, diacritics, and language-specific pronunciation.",
+            "- Use section tags only as structure, not as sung words.",
+            "- Keep a natural pace with short musical breathing room between sections.",
+            *_language_specific_rules(prompt, lyrics),
+            "",
+            "Avoid robotic vocals, forced belting, swallowed word endings, rushed syllables,",
+            "thin instruments, low backing track, foreign accent, chaotic sound design,",
+            "dissonance, hiss, and overcompressed karaoke backing.",
+            "",
+            "Lyrics:",
+            lyrics,
+        ]
+    )
+
+
+def _language_specific_rules(prompt, lyrics):
+    text = f"{prompt}\n{lyrics}".lower()
+    if any(marker in text for marker in ("brazilian portuguese", "português", "portugues", "pt-br")):
+        return [
+            "- For Brazilian Portuguese, keep cedilla and nasal vowel sounds natural and clear.",
+        ]
+    return []
+
+
+def _check_input_limits(model, prompt):
+    limit = text_limit_field(prompt, 4100)
+    if limit is not None:
+        raise_input_limit_error("elevenlabs", model, {"prompt": limit})
 
 
 def _cost_for_duration(duration):
+    if duration is None:
+        return None
     return round((duration / 60) * ELEVENLABS_USD_PER_MINUTE, 8)
+
+
+def _cost_details(duration):
+    if duration is None:
+        return {}
+    return {
+        "duration_seconds": duration,
+        "usd_per_minute": ELEVENLABS_USD_PER_MINUTE,
+    }
+
+
+def _audio_content(response):
+    content = response.content or b""
+    if not content:
+        raise RuntimeError("ElevenLabs music response did not include audio data")
+    content_type = _content_type(response)
+    if not _is_audio_content_type(content_type):
+        detail = format_response_error(response)
+        raise RuntimeError(f"ElevenLabs music response was not audio content: {detail}")
+    return content
+
+
+def _content_type(response):
+    return str(response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+
+
+def _is_audio_content_type(content_type):
+    return content_type.startswith("audio/") or content_type in ELEVENLABS_AUDIO_CONTENT_TYPES
 
 
 

@@ -8,6 +8,8 @@ import inspect
 
 import pytest
 
+from easy_ai_clients.music import MusicInputLimitError
+
 TEST_LYRICS = "Minha letra tem mais de dez caracteres para dispatch local."
 PUBLIC_GENERATION_KEYS = {
     "provider",
@@ -72,6 +74,24 @@ def provider_import(fake_module, provider="deapi"):
     return fake_import_module
 
 
+class LimitThenSuccessProviderModule(FakeProviderModule):
+    def __init__(self, provider="deapi", failures=1):
+        super().__init__(provider)
+        self.failures = failures
+        self.requests = []
+
+    def generate(self, **kwargs):
+        self.requests.append(kwargs)
+        if len(self.requests) <= self.failures:
+            raise MusicInputLimitError(
+                provider=self.provider,
+                model=kwargs["model"],
+                model_key="placeholder",
+                fields={"caption": {"unit": "characters", "maximum": 1, "observed": 2}},
+            )
+        return super().generate(**kwargs)
+
+
 def test_public_signature_uses_api_keyword():
     from easy_ai_clients import music
 
@@ -84,6 +104,7 @@ def test_public_exports_are_exact():
     from easy_ai_clients import music
 
     assert music.__all__ == [
+        "MusicInputLimitError",
         "available_apis",
         "build_lyrics_prompt",
         "download_result",
@@ -184,7 +205,7 @@ def test_generate_uses_validated_default_model(monkeypatch):
     ("provider", "native_model", "model_key"),
     [
         ("deapi", "AceStep_1_5_Turbo", "ace_step_v1_5_turbo"),
-        ("elevenlabs", "music_v1", "eleven_music"),
+        ("elevenlabs", "music_v2", "eleven_music"),
         ("google", "lyria-3-clip-preview", "lyria_3_clip_preview"),
         ("runware", "runware:ace-step@v1.5-xl-turbo", "ace_step_v1_5_xl_turbo"),
     ],
@@ -243,7 +264,7 @@ def test_generate_requires_style_or_prompt():
         )
 
 
-def test_generate_prompt_wins_over_style_prompt(monkeypatch):
+def test_generate_prompt_wins_over_preset_style_prompt(monkeypatch):
     from easy_ai_clients import music
     from easy_ai_clients.music import _router
 
@@ -259,7 +280,93 @@ def test_generate_prompt_wins_over_style_prompt(monkeypatch):
     )
 
     assert fake_module.request["prompt"] == "custom direct prompt"
-    assert fake_module.request["duration"] == 60
+    assert "duration" not in fake_module.request
+
+
+def test_elevenlabs_style_uses_small_voice_without_role_tags(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = FakeProviderModule("elevenlabs")
+
+    monkeypatch.setattr(
+        _router.importlib,
+        "import_module",
+        provider_import(fake_module, "elevenlabs"),
+    )
+    music.generate(
+        lyrics=TEST_LYRICS,
+        api="elevenlabs",
+        style="sertanejo",
+        gender="both",
+    )
+
+    prompt = fake_module.request["prompt"]
+    assert fake_module.request["model"] == "music_v2"
+    assert "Brazilian sertanejo" in prompt
+    assert "Natural male sertanejo lead" in prompt
+    assert "Natural female sertanejo lead" in prompt
+    assert "[Verse 1 - Male Lead]" not in prompt
+    assert "[Verse 2 - Female Lead]" not in prompt
+    assert "[Chorus - Duet]" not in prompt
+
+
+def test_generate_reduces_preset_prompt_sizes_after_input_limit(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = LimitThenSuccessProviderModule(provider="runware", failures=2)
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module, "runware"))
+    music.generate(
+        lyrics=TEST_LYRICS,
+        model="ace_step_v1_5_xl_turbo",
+        api="runware",
+        style="sertanejo",
+    )
+
+    assert len(fake_module.requests) == 3
+    assert len(fake_module.requests[0]["prompt"]) > len(fake_module.requests[1]["prompt"])
+    assert len(fake_module.requests[1]["prompt"]) > len(fake_module.requests[2]["prompt"])
+
+
+def test_generate_raises_original_limit_error_after_all_prompt_sizes_fail(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = LimitThenSuccessProviderModule(provider="runware", failures=10)
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module, "runware"))
+    with pytest.raises(MusicInputLimitError) as exc_info:
+        music.generate(
+            lyrics=TEST_LYRICS,
+            model="ace_step_v1_5_xl_turbo",
+            api="runware",
+            style="sertanejo",
+        )
+
+    assert exc_info.value.fields["caption"]["maximum"] == 1
+    assert len(fake_module.requests) == 6
+
+
+def test_generate_does_not_retry_explicit_prompt_after_input_limit(monkeypatch):
+    from easy_ai_clients import music
+    from easy_ai_clients.music import _router
+
+    fake_module = LimitThenSuccessProviderModule(provider="runware", failures=10)
+
+    monkeypatch.setattr(_router.importlib, "import_module", provider_import(fake_module, "runware"))
+    with pytest.raises(MusicInputLimitError):
+        music.generate(
+            lyrics=TEST_LYRICS,
+            model="ace_step_v1_5_xl_turbo",
+            api="runware",
+            style="sertanejo",
+            prompt="custom direct prompt",
+        )
+
+    assert len(fake_module.requests) == 1
+    assert fake_module.requests[0]["prompt"] == "custom direct prompt"
 
 
 @pytest.mark.parametrize(
@@ -267,6 +374,7 @@ def test_generate_prompt_wins_over_style_prompt(monkeypatch):
     [
         "audio_settings",
         "include_cost",
+        "negative_prompt",
         "number_results",
         "output_format",
         "output_type",

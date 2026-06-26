@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
+import re
 from pathlib import Path
 
 import pytest
@@ -11,31 +13,34 @@ from easy_ai_clients.music import _style_adapter as style_adapter
 
 STYLE_DIR = Path(style_adapter.__file__).resolve().parent / "styles"
 TEST_LYRICS = "Minha letra tem mais de dez caracteres para validacao local."
+VOICE_PRESETS = None
 
 REQUIRED_FIELDS = {
     "id",
     "description",
-    "style_family",
-    "style_prompt",
+    "style_prompts",
     "default_language",
-    "default_vocal",
+    "voice_presets",
     "tempo_bpm",
     "key_scale",
     "time_signature",
-    "duration_seconds",
-    "generation_controls",
     "instrumentation",
     "arrangement",
     "energy",
     "mood",
     "mix_target",
+}
+
+REMOVED_FIELDS = {
+    "default_vocal",
+    "duration_seconds",
+    "generation_controls",
     "negative_traits",
 }
 
 FORBIDDEN_ARTIST_NAMES = {
     "Adele",
     "Beyonce",
-    "Beyoncé",
     "Drake",
     "Taylor Swift",
     "Bad Bunny",
@@ -47,16 +52,39 @@ FORBIDDEN_ARTIST_NAMES = {
 
 PROMPT_FACING_FIELDS = (
     "description",
-    "style_family",
-    "style_prompt",
-    "default_vocal",
+    "style_prompts",
+    "voice_presets",
     "instrumentation",
     "arrangement",
     "energy",
     "mood",
     "mix_target",
-    "negative_traits",
 )
+STYLE_PROMPT_LIMITS = {
+    "small": (80, 100),
+    "medium": (250, 300),
+    "large": (500, 700),
+}
+VOICE_PROMPT_LIMITS = {
+    "small": (80, 100),
+    "medium": (150, 200),
+}
+FORBIDDEN_STYLE_VOICE_TERMS = {
+    "vocal",
+    "vocals",
+    "voice",
+    "voices",
+    "singer",
+    "singers",
+    "choir",
+    "duet",
+    "male",
+    "female",
+    "melisma",
+    "vibrato",
+    "diction",
+    "breath",
+}
 
 
 def test_list_styles_returns_exact_file_stems():
@@ -87,24 +115,28 @@ def test_preset_request_contains_stable_prompt_fragments():
 
     assert request["style_source"] == "preset"
     assert "Brazilian sertanejo" in request["kwargs"]["prompt"]
-    assert "duet lead vocal" in request["kwargs"]["prompt"]
+    assert "Two female lead voices" in request["kwargs"]["prompt"]
     assert "Brazilian Portuguese" in request["kwargs"]["prompt"]
     assert "92 BPM" in request["kwargs"]["prompt"]
     assert "E major" in request["kwargs"]["prompt"]
     assert "acoustic guitar" in request["kwargs"]["prompt"]
+    assert "duration" not in request["kwargs"]
+    assert "negative_prompt" not in request["kwargs"]
 
 
-def test_prompt_kwarg_replaces_preset_prompt():
+def test_prompt_kwarg_replaces_preset_prompt_without_voice_append():
     request = style_adapter.build_generation_request(
         provider="deapi",
         model="AceStep_1_5_Turbo",
         lyrics=TEST_LYRICS,
         style="sertanejo",
         prompt="extra romantic lift",
+        kwargs={"gender": "male"},
     )
 
     assert request["kwargs"]["prompt"] == "extra romantic lift"
-    assert request["kwargs"]["duration"] == 60
+    assert "Two male lead voices" not in request["kwargs"]["prompt"]
+    assert "duration" not in request["kwargs"]
 
 
 def test_caller_kwargs_override_generated_kwargs():
@@ -137,7 +169,7 @@ def test_language_override_updates_prompt_and_ace_vocal_language():
 
 def test_language_override_is_prompt_only_for_non_ace_providers():
     provider_cases = [
-        ("elevenlabs", "music_v1"),
+        ("elevenlabs", "music_v2"),
         ("google", "lyria-3-pro-preview"),
     ]
 
@@ -166,67 +198,18 @@ def test_language_override_rejects_unknown_language():
         )
 
 
-def test_unsupported_negative_prompt_is_preserved_for_wrapper_rejection():
-    request = style_adapter.build_generation_request(
-        provider="deapi",
-        model="AceStep_1_5_Turbo",
-        lyrics=TEST_LYRICS,
-        style="sertanejo",
-        kwargs={"negative_prompt": "avoid noisy mix"},
-    )
-
-    assert request["kwargs"]["negative_prompt"] == "avoid noisy mix"
-    assert "Negative Prompt:" not in request["kwargs"]["prompt"]
+def test_negative_prompt_is_rejected_by_style_adapter():
+    with pytest.raises(ValueError, match="negative_prompt is not supported"):
+        style_adapter.build_generation_request(
+            provider="runware",
+            model="runware:ace-step@v1.5-xl-sft",
+            lyrics=TEST_LYRICS,
+            style="sertanejo",
+            kwargs={"negative_prompt": "avoid spoken word"},
+        )
 
 
-def test_runware_sft_receives_preset_negative_traits():
-    request = style_adapter.build_generation_request(
-        provider="runware",
-        model="runware:ace-step@v1.5-xl-sft",
-        lyrics=TEST_LYRICS,
-        style="sertanejo",
-    )
-
-    assert "weak chorus" in request["kwargs"]["negative_prompt"]
-    assert "no duet blend" in request["kwargs"]["negative_prompt"]
-
-
-def test_runware_xl_turbo_does_not_receive_preset_negative_traits():
-    request = style_adapter.build_generation_request(
-        provider="runware",
-        model="runware:ace-step@v1.5-xl-turbo",
-        lyrics=TEST_LYRICS,
-        style="sertanejo",
-    )
-
-    assert "negative_prompt" not in request["kwargs"]
-
-
-def test_runware_sft_user_negative_prompt_replaces_preset_negative_traits():
-    request = style_adapter.build_generation_request(
-        provider="runware",
-        model="runware:ace-step@v1.5-xl-sft",
-        lyrics=TEST_LYRICS,
-        style="sertanejo",
-        kwargs={"negative_prompt": "avoid spoken word"},
-    )
-
-    assert request["kwargs"]["negative_prompt"] == "avoid spoken word"
-
-
-def test_runware_sft_null_negative_prompt_disables_preset_negative_traits():
-    request = style_adapter.build_generation_request(
-        provider="runware",
-        model="runware:ace-step@v1.5-xl-sft",
-        lyrics=TEST_LYRICS,
-        style="sertanejo",
-        kwargs={"negative_prompt": None},
-    )
-
-    assert "negative_prompt" not in request["kwargs"]
-
-
-def test_style_none_preserves_prompt_negative_prompt_and_kwargs():
+def test_style_none_preserves_prompt_exactly_and_kwargs():
     request = style_adapter.build_generation_request(
         provider="runware",
         model="runware:ace-step@v1.5-xl-sft",
@@ -234,15 +217,61 @@ def test_style_none_preserves_prompt_negative_prompt_and_kwargs():
         style=None,
         prompt="modern romantic sertanejo",
         kwargs={
-            "negative_prompt": "avoid spoken word",
+            "gender": "both",
             "duration": 90,
         },
     )
 
     assert request["style_source"] == "none"
     assert request["kwargs"]["prompt"] == "modern romantic sertanejo"
-    assert request["kwargs"]["negative_prompt"] == "avoid spoken word"
     assert request["kwargs"]["duration"] == 90
+
+
+def test_voice_description_overrides_preset_gender_voice():
+    request = style_adapter.build_generation_request(
+        provider="google",
+        model="lyria-3-pro-preview",
+        lyrics=TEST_LYRICS,
+        style="sertanejo",
+        kwargs={
+            "gender": "female",
+            "voice_description": "Soft intimate baritone with close diction.",
+        },
+    )
+
+    assert "Soft intimate baritone" in request["kwargs"]["prompt"]
+    assert "Two female lead voices" not in request["kwargs"]["prompt"]
+
+
+def test_elevenlabs_uses_small_voice_prompt_for_presets():
+    request = style_adapter.build_generation_request(
+        provider="elevenlabs",
+        model="music_v2",
+        lyrics=TEST_LYRICS,
+        style="sertanejo",
+        kwargs={"gender": "both"},
+    )
+
+    prompt = request["kwargs"]["prompt"]
+    assert "Brazilian sertanejo" in prompt
+    assert "Natural male sertanejo lead" in prompt
+    assert "Natural female sertanejo lead" in prompt
+    assert "Two male lead voices" not in prompt
+    assert "Two female lead voices" not in prompt
+    assert "[Verse 1 - Male Lead]" not in prompt
+    assert "[Verse 2 - Female Lead]" not in prompt
+    assert "[Chorus - Duet]" not in prompt
+
+
+def test_invalid_gender_is_rejected():
+    with pytest.raises(ValueError, match="gender must be one of"):
+        style_adapter.build_generation_request(
+            provider="google",
+            model="lyria-3-pro-preview",
+            lyrics=TEST_LYRICS,
+            style="sertanejo",
+            kwargs={"gender": "duet"},
+        )
 
 
 def test_get_style_presets_returns_full_deep_copied_presets():
@@ -260,12 +289,12 @@ def test_get_style_presets_returns_full_deep_copied_presets():
 
 def test_get_style_presets_filters_fields_without_automatic_id():
     presets = style_adapter.get_style_presets(
-        fields=["description", "style_family"],
+        fields=["description", "style_prompts"],
         styles="sertanejo",
     )
 
     assert list(presets) == ["sertanejo"]
-    assert list(presets["sertanejo"]) == ["description", "style_family"]
+    assert list(presets["sertanejo"]) == ["description", "style_prompts"]
     assert "id" not in presets["sertanejo"]
 
 
@@ -303,7 +332,7 @@ def test_get_style_presets_reports_invalid_filter_shapes():
     assert "<non-string item: int>" in error["invalid_fields"]
     assert "<empty string>" in error["invalid_fields"]
     assert error["invalid_styles"] == ["<empty list>"]
-    assert error["accepted_fields"][:3] == ["id", "description", "style_family"]
+    assert error["accepted_fields"][:3] == ["id", "description", "default_language"]
     assert error["accepted_styles"] == style_adapter.list_styles()
 
 
@@ -327,29 +356,41 @@ def test_style_package_has_expected_files():
 
 
 def test_all_style_modules_import_and_expose_valid_presets():
+    expected_voice_presets = _voice_presets()
     for style in style_adapter.list_styles():
         module = importlib.import_module(f"easy_ai_clients.music.styles.{style}")
         assert hasattr(module, "STYLE_PRESET")
         preset = module.STYLE_PRESET
 
-        assert set(preset) == REQUIRED_FIELDS
+        assert REQUIRED_FIELDS.issubset(preset)
+        assert REMOVED_FIELDS.isdisjoint(preset)
         assert preset["id"] == style
         assert set(preset["description"]) == {"pt", "en"}
+        assert set(preset["style_prompts"]) == {"small", "medium", "large"}
+        assert set(preset["voice_presets"]) == {"default_gender", "small", "medium", "large"}
+        assert preset["voice_presets"]["large"] == {
+            "male": expected_voice_presets[style]["male"],
+            "female": expected_voice_presets[style]["female"],
+        }
+        assert preset["voice_presets"]["default_gender"] == expected_voice_presets[style]["default_gender"]
+        assert preset["voice_presets"]["default_gender"] in {"male", "female"}
+        _assert_style_prompt_lengths_and_terms(preset)
+        _assert_prompt_text_is_complete(preset["id"], "description.pt", preset["description"]["pt"])
+        _assert_prompt_text_is_complete(preset["id"], "description.en", preset["description"]["en"])
+        _assert_voice_prompt_lengths(preset)
         for language in ("pt", "en"):
+            assert isinstance(preset["description"][language], str)
             assert isinstance(preset["description"][language], str)
             assert preset["description"][language].strip()
             assert preset["description"][language] == preset["description"][language].strip()
             assert "\n" not in preset["description"][language]
             assert "\r" not in preset["description"][language]
-        assert set(preset["default_vocal"]) == {"description"}
         assert "lyrics" not in preset
         assert "seed" not in preset
         assert not _contains_exact_key(preset, "seed")
         assert isinstance(preset["tempo_bpm"], int)
         assert 30 <= preset["tempo_bpm"] <= 300
         assert preset["time_signature"] in {2, 3, 4, 6}
-        assert set(preset["generation_controls"]) == {"instrumental"}
-        assert isinstance(preset["generation_controls"]["instrumental"], bool)
         assert_prompt_fields_have_no_artist_names(preset)
 
 
@@ -357,6 +398,86 @@ def assert_prompt_fields_have_no_artist_names(preset):
     prompt_text = " ".join(_flatten(preset[field]) for field in PROMPT_FACING_FIELDS)
     for artist_name in FORBIDDEN_ARTIST_NAMES:
         assert artist_name.lower() not in prompt_text.lower()
+
+
+def _assert_style_prompt_lengths_and_terms(preset):
+    for size, (minimum, maximum) in STYLE_PROMPT_LIMITS.items():
+        prompt = preset["style_prompts"][size]
+        assert minimum <= len(prompt) <= maximum, (preset["id"], size, len(prompt))
+        _assert_prompt_text_is_complete(preset["id"], f"style_prompts.{size}", prompt)
+        lowered = prompt.lower()
+        for term in FORBIDDEN_STYLE_VOICE_TERMS:
+            assert not re.search(rf"\b{re.escape(term)}\b", lowered), (
+                preset["id"],
+                size,
+                term,
+            )
+
+
+def _assert_voice_prompt_lengths(preset):
+    for size, (minimum, maximum) in VOICE_PROMPT_LIMITS.items():
+        prompts = preset["voice_presets"][size]
+        assert set(prompts) == {"male", "female"}
+        for gender, prompt in prompts.items():
+            assert minimum <= len(prompt) <= maximum, (
+                preset["id"],
+                size,
+                gender,
+                len(prompt),
+            )
+            _assert_prompt_text_is_complete(
+                preset["id"],
+                f"voice_presets.{size}.{gender}",
+                prompt,
+            )
+    assert set(preset["voice_presets"]["large"]) == {"male", "female"}
+    for gender, prompt in preset["voice_presets"]["large"].items():
+        _assert_prompt_text_is_complete(
+            preset["id"],
+            f"voice_presets.large.{gender}",
+            prompt,
+        )
+
+
+def _assert_prompt_text_is_complete(style_id, field, text):
+    assert text == text.strip(), (style_id, field)
+    assert "\n" not in text, (style_id, field)
+    assert "\r" not in text, (style_id, field)
+    assert text.endswith("."), (style_id, field, text)
+    terminal_token = text[:-1].split()[-1].lower().strip(",:;")
+    assert terminal_token not in {
+        "a",
+        "an",
+        "and",
+        "for",
+        "from",
+        "in",
+        "into",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "through",
+        "to",
+        "while",
+        "with",
+    }, (style_id, field, terminal_token)
+    assert not re.search(r"(?<![.!?]) Use\b", text), (style_id, field, text)
+    assert " energy Use " not in text, (style_id, field)
+    assert " lyrics Use " not in text, (style_id, field)
+
+
+def _voice_presets():
+    global VOICE_PRESETS
+    if VOICE_PRESETS is not None:
+        return VOICE_PRESETS
+    path = Path(__file__).resolve().parent / "music_voice_preset_snapshot.py"
+    spec = importlib.util.spec_from_file_location("music_voice_preset_snapshot", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    VOICE_PRESETS = module.VOICE_PRESETS
+    return VOICE_PRESETS
 
 
 def _contains_exact_key(value, target_key):
@@ -375,4 +496,3 @@ def _flatten(value):
     if isinstance(value, list):
         return " ".join(_flatten(item) for item in value)
     return str(value)
-

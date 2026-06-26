@@ -14,6 +14,7 @@ from .image_utils import image_to_data_url
 from .provider_utils import (
     detect_block,
     extract_image_output,
+    extract_openrouter_usage_cost,
     extract_request_id,
     extract_text_from_openai_style_response,
     get_openrouter_models,
@@ -46,10 +47,7 @@ def _image_modalities(model: str, *, timeout_seconds: int) -> list[str]:
 
 
 def _usage_cost(payload: dict) -> Decimal | None:
-    usage = payload.get("usage") or {}
-    if isinstance(usage, dict) and usage.get("cost") is not None:
-        return Decimal(str(usage["cost"]))
-    return None
+    return extract_openrouter_usage_cost(payload)
 
 
 def _resolve_openrouter_image_cost(
@@ -371,11 +369,16 @@ def analyze_image(
             return build_analyze_result(
                 request_id=request_id or blocked.request_id,
                 cost_usd=blocked.cust_usd,
+                cost_source="provider_response",
+                cost_is_estimated=False,
                 input_text=prepared.prompt,
                 output=blocked.warning,
             )
         cost = _usage_cost(payload) or Decimal("0")
         output = extract_text_from_openai_style_response(payload).strip()
+        cost_source = "provider_response" if cost != 0 else "unavailable"
+        cost_is_estimated = False
+        cost_details = {"usage": payload.get("usage") or {}, "model": model} if cost != 0 else {}
         if cost == 0 and request_id:
             try:
                 updated = update_openrouter_cost_from_request_id(
@@ -389,11 +392,17 @@ def analyze_image(
                     timeout_seconds=timeout_seconds,
                 )
                 cost = Decimal(str(updated.get("cost_usd") or "0"))
+                cost_source = updated.get("cost_source") or cost_source
+                cost_is_estimated = bool(updated.get("cost_is_estimated", cost_is_estimated))
+                cost_details = updated.get("cost_details") or cost_details
             except Exception:
                 cost = Decimal("0")
         return build_analyze_result(
             request_id=request_id,
             cost_usd=cost,
+            cost_source=cost_source,
+            cost_is_estimated=cost_is_estimated,
+            cost_details=cost_details,
             input_text=prepared.prompt,
             output=output or "OpenRouter did not return textual output for the analyze request.",
         )

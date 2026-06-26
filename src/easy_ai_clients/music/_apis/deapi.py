@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from .._common import (
@@ -6,10 +7,14 @@ from .._common import (
     auth_header,
     download_generation_audio,
     normalize_cost,
+    normalize_duration,
+    raise_input_limit_error,
     reject_parameter_present,
     reject_unknown_kwargs,
     request_json,
+    sanitize,
     standard_generation,
+    text_limit_field,
     validate_range,
 )
 
@@ -49,7 +54,8 @@ def generate(lyrics, model="AceStep_1_5_Turbo", **kwargs):
             - `prompt`: Required. Sent as `caption`.
             - `negative_prompt`: Not supported by deAPI music generation.
               Passing a value raises `ValueError`.
-            - `duration`: Song duration in seconds. Defaults to `60`.
+            - `duration`: Song duration in seconds. Missing or invalid values
+              use `60`. Numeric values are clamped to `10..300`.
             - `steps`: Provider inference step count.
               Defaults to `8`; accepted values are `1` to `8`.
             - `bpm`: Tempo in beats per minute. Defaults to `116`.
@@ -72,10 +78,10 @@ def generate(lyrics, model="AceStep_1_5_Turbo", **kwargs):
     reject_parameter_present(kwargs, "negative_prompt", "deapi")
     if prompt is None:
         raise ValueError("prompt is required for deapi")
+    duration = normalize_duration(kwargs.pop("duration", None), 10, 300, default=60)
     reject_unknown_kwargs(
         kwargs,
         {
-            "duration",
             "steps",
             "bpm",
             "key_scale",
@@ -85,13 +91,14 @@ def generate(lyrics, model="AceStep_1_5_Turbo", **kwargs):
             "webhook_url",
         },
     )
+    _check_input_limits(model, prompt, lyrics)
     _validate_kwargs(model, kwargs)
 
     data = {
         "caption": prompt,
         "model": model,
         "lyrics": lyrics,
-        "duration": kwargs.get("duration", 60),
+        "duration": duration,
         "inference_steps": kwargs.get("steps", 8),
         "guidance_scale": DEAPI_GUIDANCE_SCALES[model],
         "seed": DEAPI_SEED,
@@ -123,13 +130,17 @@ def generate(lyrics, model="AceStep_1_5_Turbo", **kwargs):
             json_payload=data,
             timeout=api_timeout(120),
         )
-    request_id = response["data"]["request_id"]
+    response_data = _data_or_raise(response, "submit")
+    request_id = _request_id_or_raise(response_data, "submit")
+    provider_status = response_data.get("status")
+    if _is_failed_status(provider_status):
+        raise RuntimeError(_failure_message("submit", response_data))
     cost = _calculate_cost(data)
     return standard_generation(
         provider="deapi",
         model=model,
         request_id=request_id,
-        status=_standard_status(response["data"].get("status")),
+        status=_standard_status(provider_status, initial=True),
         cost_usd=cost,
         cost_source="deapi_price_endpoint" if cost is not None else None,
         cost_is_estimated=False,
@@ -153,18 +164,19 @@ def get_status(generation):
         RuntimeError: If the provider reports a terminal failure.
     """
     response = _status_response(generation)
-    status = response["data"]["status"]
+    response_data = _data_or_raise(response, "status")
+    status = _provider_status(response_data, "status")
     if generation.get("cost_source") == "unavailable":
-        _apply_status_cost(generation, response["data"])
-    if status in {"failed", "error", "cancelled", "canceled"}:
+        _apply_status_cost(generation, response_data)
+    if _is_failed_status(status):
         generation["status"] = "failed"
-        raise RuntimeError(f"deapi generation failed with status: {status}")
-    if status == "done":
+        raise RuntimeError(_failure_message("status", response_data))
+    if _is_success_status(status):
         generation["status"] = "completed"
     else:
         generation["status"] = "running"
     if generation.get("cost_source") == "unavailable":
-        _apply_status_cost(generation, response["data"])
+        _apply_status_cost(generation, response_data)
     return generation
 
 
@@ -181,17 +193,22 @@ def download_result(generation):
         RuntimeError: If the provider reports a terminal failure.
     """
     response = _status_response(generation)
-    status = response["data"]["status"]
+    response_data = _data_or_raise(response, "download")
+    status = _provider_status(response_data, "download")
     if generation.get("cost_source") == "unavailable":
-        _apply_status_cost(generation, response["data"])
-    if status in {"failed", "error", "cancelled", "canceled"}:
+        _apply_status_cost(generation, response_data)
+    if _is_failed_status(status):
         generation["status"] = "failed"
-        raise RuntimeError(f"deapi generation failed with status: {status}")
-    if status != "done":
+        raise RuntimeError(_failure_message("download", response_data))
+    if not _is_success_status(status):
         generation["status"] = "running"
         return generation
-    generation["status"] = "completed"
-    return download_generation_audio(generation, "deapi", response["data"].get("result_url"), "mp3")
+    try:
+        audio_url = _audio_url(response_data)
+        return download_generation_audio(generation, "deapi", audio_url, "mp3")
+    except Exception:
+        generation["status"] = "failed"
+        raise
 
 
 def _headers():
@@ -201,8 +218,6 @@ def _headers():
 
 
 def _validate_kwargs(model, kwargs):
-    if "duration" in kwargs and not 10 <= kwargs["duration"] <= 600:
-        validate_range("duration", kwargs["duration"], 10, 600, " seconds")
     if "steps" in kwargs:
         try:
             validate_range("steps", kwargs["steps"], 1, 8)
@@ -214,11 +229,71 @@ def _validate_kwargs(model, kwargs):
         raise ValueError("time_signature must be 2, 3, 4, or 6")
 
 
+def _check_input_limits(model, prompt, lyrics):
+    fields = {}
+    prompt_limit = text_limit_field(prompt, 3000)
+    lyrics_limit = text_limit_field(lyrics, 3000)
+    if prompt_limit is not None:
+        fields["caption"] = prompt_limit
+    if lyrics_limit is not None:
+        fields["lyrics"] = lyrics_limit
+    if fields:
+        raise_input_limit_error("deapi", model, fields)
+
+
 def _status_response(generation):
     status_endpoint = MODELS[generation["model"]]["status_endpoint"].format(
         request_id=generation["request_id"]
     )
     return request_json("GET", status_endpoint, headers=_headers(), timeout=api_timeout(120))
+
+
+def _data_or_raise(response, stage):
+    if not isinstance(response, dict):
+        raise RuntimeError(f"deapi {stage} response was not a JSON object")
+    data = response.get("data")
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            f"deapi {stage} response did not include a data object: {_safe_detail(response)}"
+        )
+    return data
+
+
+def _request_id_or_raise(data, stage):
+    request_id = data.get("request_id")
+    if not request_id:
+        raise RuntimeError(
+            f"deapi {stage} response did not include data.request_id: {_safe_detail(data)}"
+        )
+    return str(request_id)
+
+
+def _provider_status(data, stage):
+    status = data.get("status")
+    if not status:
+        raise RuntimeError(
+            f"deapi {stage} response did not include data.status: {_safe_detail(data)}"
+        )
+    return str(status).strip().lower()
+
+
+def _audio_url(data):
+    audio_url = data.get("result_url")
+    if not audio_url:
+        raise RuntimeError(
+            "deapi completed response did not include data.result_url: "
+            f"{_safe_detail(data)}"
+        )
+    return audio_url
+
+
+def _failure_message(stage, data):
+    status = str(data.get("status") or "error").strip().lower()
+    return f"deapi generation failed during {stage} with status {status}: {_safe_detail(data)}"
+
+
+def _safe_detail(value):
+    return json.dumps(sanitize(value), ensure_ascii=False)[:1200]
 
 
 def _calculate_cost(data):
@@ -282,12 +357,37 @@ def _price_timeout():
     return min(api_timeout(15), 15)
 
 
-def _standard_status(provider_status):
-    if provider_status == "done":
+def _standard_status(provider_status, initial=False):
+    if _is_success_status(provider_status):
         return "completed"
-    if provider_status in {"failed", "error", "cancelled", "canceled"}:
+    if _is_failed_status(provider_status):
         return "failed"
-    return "submitted"
+    if _is_running_status(provider_status):
+        return "submitted" if initial else "running"
+    return "submitted" if initial else "running"
+
+
+def _is_success_status(provider_status):
+    return str(provider_status or "").strip().lower() in {"done", "completed", "succeeded"}
+
+
+def _is_running_status(provider_status):
+    return str(provider_status or "").strip().lower() in {
+        "",
+        "pending",
+        "processing",
+        "running",
+        "queued",
+    }
+
+
+def _is_failed_status(provider_status):
+    return str(provider_status or "").strip().lower() in {
+        "failed",
+        "error",
+        "cancelled",
+        "canceled",
+    }
 
 
 

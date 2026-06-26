@@ -171,6 +171,10 @@ Image inputs can be local file paths, public `http` / `https` URLs, raw base64
 strings, or base64 data URLs. For `image.edit`, the public mask convention is
 black = editable and white = preserve.
 
+OpenRouter image analysis requires an explicit provider model ID, for example
+`image.analyze(..., api="openrouter", model="qwen/qwen3.7-plus")`. The model
+value is sent as provided, without local aliases.
+
 ### Music
 
 `easy_ai_clients.music` is intentionally narrow. It supports exactly:
@@ -182,6 +186,27 @@ black = editable and white = preserve.
 `music.generate(...)` validates provider/model support before dispatch. Public
 music results exclude raw provider responses, credentials, auth headers,
 provider audio URLs, signed URLs, and large audio payloads.
+
+Music duration is normalized per provider/model:
+
+| Provider | Duration behavior |
+| --- | --- |
+| `deapi` | Clamps numeric `duration` to `10..300` seconds. Missing or invalid values use `60`. |
+| `elevenlabs` | Uses native `music_v2` through public keys `eleven_music`, `eleven_music_v2`, and `music_v2`. Clamps valid numeric `duration` to `3..600` seconds and sends `music_length_ms`. Missing or invalid values omit duration. |
+| `google` | Clip ignores duration and remains about `30` seconds. Pro clamps valid values to `15..180` seconds and adds target duration guidance to the prompt. |
+| `runware` | Clamps numeric `duration` to `30..300` seconds. Missing or invalid values use `60`. |
+
+Style presets contain `style_prompts` in `small`, `medium`, and `large`
+variants, plus `voice_presets` with `default_gender` and `small`, `medium`, and
+`large` male/female voice-description maps. The router starts with the `large`
+style and voice prompts. If provider input limits are exceeded, it retries
+progressively smaller preset prompts before raising `music.MusicInputLimitError`.
+ElevenLabs uses `style_prompts.large` with `voice_presets.small` by default.
+
+Use `gender="male"`, `gender="female"`, `gender="both"`, or
+`voice_description` for prompt-level voice guidance. Over-limit music inputs
+raise `music.MusicInputLimitError` with field-specific repair prompts before
+generation.
 
 ### Video
 
@@ -220,7 +245,7 @@ defaults, examples, and cost estimates; they are not a complete local
 acceptance list.
 
 The music dispatcher is stricter. It rejects unsupported music models, unknown
-styles, removed public kwargs, and unsupported `negative_prompt` usage before
+styles, removed public kwargs, and public `negative_prompt` usage before
 provider dispatch.
 
 Cost values are best-effort normalized USD values. Unknown costs use

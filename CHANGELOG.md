@@ -3,6 +3,37 @@
 All notable changes to **easy-ai-clients** are documented in this file.
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.0 - 2026-06-26
+
+### Added
+
+- Added adaptive music preset prompt sizing with `style_prompts` variants and
+  `voice_presets` maps containing `default_gender` plus sized male/female
+  variants, so preset-based generation can retry smaller prompt text before
+  raising `MusicInputLimitError`.
+- Added OpenRouter image analysis documentation for 8 validated vision models,
+  including pricing, validated parameters, and paid validation date.
+
+### Changed
+
+- Changed music style preset metadata from singular `style_prompt` and
+  `voice_preset` fields to sized `style_prompts` and `voice_presets` maps.
+- Changed ElevenLabs music generation to route `eleven_music`,
+  `eleven_music_v2`, and `music_v2` to native `music_v2`, use internal
+  `output_format=auto`, and use concise preset voice guidance for direct music
+  prompts.
+- Changed `image.analyze(..., api="openrouter")` to require explicit
+  OpenRouter model IDs and forward model/kwargs without aliases.
+
+### Fixed
+
+- Hardened ElevenLabs music prompt assembly with language-neutral diction,
+  diacritic, section-tag, pacing, and anti-artifact guidance while preserving
+  the public `music.generate` success schema.
+- Fixed OpenRouter image analysis cost refresh through
+  `image.update_cost("analyze", ..., api="openrouter")` and provider-reported
+  cost fields.
+
 ## 0.12.0 - 2026-06-24
 
 ### Added

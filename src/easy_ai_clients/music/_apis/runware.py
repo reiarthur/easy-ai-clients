@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from .._common import (
@@ -6,10 +7,14 @@ from .._common import (
     auth_header,
     download_generation_audio,
     normalize_cost,
+    normalize_duration,
+    raise_input_limit_error,
+    reject_parameter_present,
     reject_unknown_kwargs,
     request_json,
     sanitize,
     standard_generation,
+    text_limit_field,
     validate_range,
 )
 
@@ -67,9 +72,9 @@ def generate(lyrics, model="runware:ace-step@v1.5-xl-turbo", **kwargs):
             - "runware:ace-step@v1.5-xl-sft": ACE-Step XL SFT.
         **kwargs: Optional provider parameters:
             - `prompt`: Required. Sent as `positivePrompt`.
-            - `negative_prompt`: Sent as `negativePrompt` only for
-              `runware:ace-step@v1.5-xl-sft`.
-            - `duration`: ACE-Step duration in seconds.
+            - `negative_prompt`: Not supported by public music generation.
+            - `duration`: ACE-Step duration in seconds. Missing or invalid
+              values use `60`. Numeric values are clamped to `30..300`.
             - `steps`: ACE-Step inference steps.
             - `bpm`: ACE-Step tempo in beats per minute.
             - `key_scale`: ACE-Step musical key.
@@ -87,25 +92,27 @@ def generate(lyrics, model="runware:ace-step@v1.5-xl-turbo", **kwargs):
     if model not in MODELS:
         raise ValueError(f"Unsupported model: {model}")
     prompt = kwargs.pop("prompt", None)
-    if "negative_prompt" in kwargs and not _supports_negative_prompt(model):
-        raise ValueError(f"negative_prompt is not supported for Runware model: {model}")
-    negative_prompt = kwargs.pop("negative_prompt", None)
-    _validate_request(model, prompt, negative_prompt, lyrics, kwargs)
+    reject_parameter_present(kwargs, "negative_prompt", "runware")
+    duration = normalize_duration(kwargs.pop("duration", None), 30, 300, default=60)
+    if "steps" not in kwargs:
+        kwargs["steps"] = _default_steps(model)
+    _validate_request(model, prompt, lyrics, kwargs)
+    kwargs["duration"] = duration
 
     task_uuid = str(uuid.uuid4())
     response = request_json(
         "POST",
         MODELS[model]["endpoint"],
         headers=_headers(),
-        json_payload=[_payload(model, task_uuid, prompt, negative_prompt, lyrics, kwargs)],
+        json_payload=[_payload(model, task_uuid, prompt, lyrics, kwargs)],
         timeout=api_timeout(120),
     )
-    result = _first_result(response)
+    result = _first_result(response, "submit")
     cost = normalize_cost(result.get("cost"))
     generation = standard_generation(
         provider="runware",
         model=model,
-        request_id=result["taskUUID"],
+        request_id=_task_uuid(result, fallback=task_uuid),
         status=_standard_status(result),
         cost_usd=cost,
         cost_source="provider_response" if cost is not None else None,
@@ -126,7 +133,11 @@ def get_status(generation):
     Raises:
         RuntimeError: If the provider reports a terminal failure.
     """
-    result = _status_result(generation)
+    try:
+        result = _status_result(generation)
+    except RuntimeError:
+        generation["status"] = "failed"
+        raise
     status = result.get("status")
     cost = normalize_cost(result.get("cost"))
     if cost is not None:
@@ -136,9 +147,6 @@ def get_status(generation):
             source="provider_response",
             is_estimated=False,
         )
-    if status == "error":
-        generation["status"] = "failed"
-        raise RuntimeError(f"runware generation failed with status: {status}")
     if status == "success":
         generation["status"] = "completed"
     else:
@@ -158,7 +166,11 @@ def download_result(generation):
     Raises:
         RuntimeError: If the provider reports a terminal failure.
     """
-    result = _status_result(generation)
+    try:
+        result = _status_result(generation)
+    except RuntimeError:
+        generation["status"] = "failed"
+        raise
     status = result.get("status")
     cost = normalize_cost(result.get("cost"))
     if cost is not None:
@@ -168,17 +180,22 @@ def download_result(generation):
             source="provider_response",
             is_estimated=False,
         )
-    if status == "error":
-        generation["status"] = "failed"
-        raise RuntimeError(f"runware generation failed with status: {status}")
     if status != "success":
         generation["status"] = "running"
         return generation
-    generation["status"] = "completed"
-    return download_generation_audio(generation, "runware", result.get("audioURL"), "mp3")
+    try:
+        audio_url = result.get("audioURL")
+        if not audio_url:
+            raise RuntimeError(
+                f"runware completed response did not include audioURL: {_safe_detail(result)}"
+            )
+        return download_generation_audio(generation, "runware", audio_url, "mp3")
+    except Exception:
+        generation["status"] = "failed"
+        raise
 
 
-def _payload(model, task_uuid, prompt, negative_prompt, lyrics, kwargs):
+def _payload(model, task_uuid, prompt, lyrics, kwargs):
     payload = {
         "taskType": "audioInference",
         "taskUUID": task_uuid,
@@ -195,12 +212,9 @@ def _payload(model, task_uuid, prompt, negative_prompt, lyrics, kwargs):
 
     if _is_ace_step(model):
         payload["seed"] = RUNWARE_SEED
-        if "duration" in kwargs:
-            payload["duration"] = kwargs["duration"]
+        payload["duration"] = kwargs["duration"]
         if "steps" in kwargs:
             payload["steps"] = kwargs["steps"]
-        if negative_prompt is not None:
-            payload["negativePrompt"] = negative_prompt
         if _is_sft(model):
             payload["CFGScale"] = RUNWARE_SFT_CFG_SCALE
         settings = {"lyrics": lyrics}
@@ -222,23 +236,28 @@ def _headers():
     return headers
 
 
-def _validate_request(model, prompt, negative_prompt, lyrics, kwargs):
+def _validate_request(model, prompt, lyrics, kwargs):
     reject_unknown_kwargs(kwargs, _allowed_kwargs(model))
 
     if prompt is None:
         raise ValueError("prompt is required for runware")
-    if negative_prompt is not None and not _supports_negative_prompt(model):
-        raise ValueError(f"negative_prompt is not supported for Runware model: {model}")
 
     if _is_ace_step(model):
-        _validate_ace_step(model, negative_prompt, lyrics, kwargs)
+        _validate_ace_step(model, prompt, lyrics, kwargs)
 
 
-def _validate_ace_step(model, negative_prompt, lyrics, kwargs):
+def _validate_ace_step(model, prompt, lyrics, kwargs):
     if not lyrics or len(lyrics.strip()) < 10:
         raise ValueError("lyrics must be at least 10 characters for ACE-Step models")
-    if "duration" in kwargs:
-        _validate_range("duration", kwargs["duration"], 30, 300)
+    fields = {}
+    prompt_limit = text_limit_field(prompt, 3000)
+    lyrics_limit = text_limit_field(lyrics, 3000)
+    if prompt_limit is not None:
+        fields["positivePrompt"] = prompt_limit
+    if lyrics_limit is not None:
+        fields["settings.lyrics"] = lyrics_limit
+    if fields:
+        raise_input_limit_error("runware", model, fields)
     if "steps" in kwargs:
         _validate_range("steps", kwargs["steps"], 1, _max_steps(model))
     if "bpm" in kwargs:
@@ -247,13 +266,6 @@ def _validate_ace_step(model, negative_prompt, lyrics, kwargs):
         raise ValueError("time_signature must be one of: 2, 3, 4, 6")
     if "vocal_language" in kwargs and kwargs["vocal_language"] not in _vocal_languages():
         raise ValueError("vocal_language must be a documented ISO 639-1 value or 'unknown'")
-    if _is_sft(model):
-        _validate_sft_cfg(negative_prompt, kwargs)
-
-
-def _validate_sft_cfg(negative_prompt, kwargs):
-    if negative_prompt is not None and RUNWARE_SFT_CFG_SCALE <= 1:
-        raise ValueError("internal Runware SFT CFG scale must be greater than 1")
 
 
 def _validate_range(name, value, minimum, maximum):
@@ -263,7 +275,6 @@ def _validate_range(name, value, minimum, maximum):
 def _allowed_kwargs(model):
     if _is_ace_step(model):
         return {
-            "duration",
             "steps",
             "bpm",
             "key_scale",
@@ -278,21 +289,78 @@ def _set_if_present(payload, provider_key, kwargs, kwarg_key):
         payload[provider_key] = kwargs[kwarg_key]
 
 
-def _first_result(response):
-    errors = response.get("errors") or []
-    if errors:
-        error = errors[0]
-        status = error.get("status") or error.get("code") or "error"
-        message = sanitize(error.get("message") or error)
-        raise RuntimeError(f"runware generation failed with status: {status}: {message}")
-    data = response.get("data") or []
+def _first_result(response, stage="response"):
+    if not isinstance(response, dict):
+        raise RuntimeError(f"runware {stage} response was not a JSON object")
+
+    _raise_response_error(response, stage)
+    data = response.get("data")
+    if data is None:
+        raise RuntimeError(f"runware {stage} response did not include data")
+    if not isinstance(data, list):
+        raise RuntimeError(f"runware {stage} response data was not a list: {_safe_detail(data)}")
     if not data:
-        raise RuntimeError("runware response did not include data")
-    return data[0]
+        raise RuntimeError(f"runware {stage} response did not include data")
+
+    result = data[0]
+    if not isinstance(result, dict):
+        raise RuntimeError(
+            f"runware {stage} response first data item was not an object: {_safe_detail(result)}"
+        )
+    if result.get("status") == "error" or result.get("error"):
+        raise RuntimeError(_result_error_message(result, stage))
+    return result
 
 
-def _supports_negative_prompt(model):
-    return _is_sft(model)
+def _raise_response_error(response, stage):
+    errors = response.get("errors")
+    if errors:
+        raise RuntimeError(_response_error_message(errors, stage))
+    error = response.get("error")
+    if error:
+        raise RuntimeError(_response_error_message(error, stage))
+
+
+def _response_error_message(error_value, stage):
+    error = _first_error(error_value)
+    status = error.get("status") or error.get("code") or "error"
+    return f"runware generation failed during {stage} with status {status}: {_safe_detail(error)}"
+
+
+def _result_error_message(result, stage):
+    detail = {
+        "status": result.get("status"),
+        "taskUUID": result.get("taskUUID"),
+        "code": result.get("code"),
+        "message": result.get("message"),
+        "error": result.get("error"),
+    }
+    status = result.get("status") or "error"
+    return f"runware generation failed during {stage} with status {status}: {_safe_detail(detail)}"
+
+
+def _first_error(error_value):
+    if isinstance(error_value, list):
+        if not error_value:
+            return {"message": "empty errors list"}
+        first = error_value[0]
+        if isinstance(first, dict):
+            return first
+        return {"message": first}
+    if isinstance(error_value, dict):
+        return error_value
+    return {"message": error_value}
+
+
+def _task_uuid(result, fallback=None):
+    task_uuid = result.get("taskUUID") or fallback
+    if not task_uuid:
+        raise RuntimeError(f"runware response did not include taskUUID: {_safe_detail(result)}")
+    return str(task_uuid)
+
+
+def _safe_detail(value):
+    return json.dumps(sanitize(value), ensure_ascii=False)[:1200]
 
 
 def _is_ace_step(model):
@@ -312,6 +380,19 @@ def _max_steps(model):
     return 20
 
 
+def _default_steps(model):
+    if model == "runware:ace-step@v1.5-turbo":
+        return 10
+    if model == "runware:ace-step@v1.5-xl-turbo":
+        return 8
+    if model in {
+        "runware:ace-step@v1.5-xl-base",
+        "runware:ace-step@v1.5-xl-sft",
+    }:
+        return 100
+    return 8
+
+
 def _status_result(generation):
     response = request_json(
         "POST",
@@ -320,7 +401,7 @@ def _status_result(generation):
         json_payload=[{"taskType": "getResponse", "taskUUID": generation["request_id"]}],
         timeout=api_timeout(120),
     )
-    return _first_result(response)
+    return _first_result(response, "status")
 
 
 def _standard_status(result):

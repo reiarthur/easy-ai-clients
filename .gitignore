@@ -31,6 +31,9 @@ htmlcov/
 tests/artefatos_testes/
 /audio.mp3
 /audio.txt
+/outputs/
+/temp_*/
+/tmp_*/
 docs/audio/transcribe/live_multilingual_benchmark.md
 docs/audio/transcribe/live_multilingual_benchmark_*.md
 
@@ -44,6 +47,9 @@ instrucoues_criar_api.txt
 TEMP_PROMPT*.md
 PROMPT_*.md
 prompt_atualizar_lib.md
+
+# Local media workspace, not part of the library release
+/Video_Musical/
 
 # IDE
 .idea/

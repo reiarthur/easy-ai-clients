@@ -2,93 +2,174 @@
 
 ## Overview
 
-This module implements image-to-text analysis for OpenRouter using the repository-wide normalized public contract. The public function is `analyze(prompt, image, model=None, **kwargs)` and returns `request_id`, `cost_usd`, `input_text`, `output`.
+This module implements image-to-text analysis for OpenRouter through the
+repository-wide normalized public contract.
 
-Public image inputs accept local file paths, raw base64 image strings, `data:` URLs, and public HTTP(S) image URLs. Public HTTP(S) URLs are downloaded through the shared image normalization layer with scheme, timeout, content-type, and Pillow image validation.
+Public function:
 
-## Account And Credentials
+```python
+image.analyze(prompt, image, model=None, *, api="openrouter", **kwargs)
+```
 
-- Signup/account: https://openrouter.ai/
-- API key documentation: https://openrouter.ai/settings/keys
-- Required environment variable: `OPENROUTER_API_KEY`
+For `api="openrouter"`, `model` is required. Pass the exact OpenRouter model ID
+expected by the API, such as `qwen/qwen3.7-plus`.
 
-## Official Sources
+The normalized success result contains:
 
-Endpoint documentation:
-- https://openrouter.ai/docs
-- https://openrouter.ai/docs/api-reference/chat-completion
-- https://openrouter.ai/docs/api-reference/generation
+- `request_id`
+- `cost_usd`
+- `cost_currency`
+- `cost_is_estimated`
+- `cost_source`
+- `cost_details`
+- `input_text`
+- `output`
 
-Model/catalog documentation:
-- https://openrouter.ai/api/v1/models
+Dispatcher-level provider errors may also add `warnings` and `error`.
 
-Pricing documentation:
-- https://openrouter.ai/docs#models
-- https://openrouter.ai/api/v1/models
+Public image inputs accept local file paths, raw base64 image strings, `data:`
+URLs, and public HTTP(S) image URLs.
 
-## Current Wrapper Default
+## Credentials
 
-- Default model: `google/gemma-3-4b-it:free`
-- Model selection: `model` argument
-- Snapshot date: 2026-04-25
+Required environment variable:
 
-The default is the lowest-cost sensible candidate selected from official pricing, official live catalogs, and the implemented source defaults. If official pricing is incomplete, the wrapper uses the strongest official pricing proxy available or returns the safest available estimate.
+```text
+OPENROUTER_API_KEY
+```
 
-## Lowest-Cost Default Policy
+## Local Model Snapshot
 
-The wrapper sends the smallest valid request shape by default: one output image for image domains, no optional enhancement or premium routing, no explicit mask unless provided, no premium reasoning unless unavoidable, and no provider-specific paid extras unless the caller supplies them in `**kwargs`.
+Snapshot date: `2026-06-26`
 
-## Parameter Reference
+The model order below matches the approved local validation snapshot used for
+this update. Prices are normalized to USD per 1,000,000 tokens for token-based
+fields. `-` means the local snapshot did not contain that field.
 
-Supported public keyword parameters are provider-native whenever practical. Unsupported keyword arguments return a normalized warning or analyze output instead of being silently ignored.
+| `model` | Display name | Input modalities | Output | Token cap | Structured cap | Context | Reasoning | Input | Output price | Cache read/write |
+| --- | --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: | --- |
+| `qwen/qwen3.7-plus` | Qwen: Qwen3.7 Plus | text, image | text | 32 | 96 | 1,000,000 | - | 0.32 | 1.28 | 0.064 / 0.4 |
+| `minimax/minimax-m3` | MiniMax: MiniMax M3 | text, image, video | text | 64 | 128 | 1,048,576 | - | 0.3 | 1.2 | 0.06 / - |
+| `google/gemini-3.1-flash-lite` | Google: Gemini 3.1 Flash Lite | text, image, video, file, audio | text | 64 | 128 | 1,048,576 | - | 0.25 | 1.5 | 0.025 / 0.083333 |
+| `openai/gpt-5.4` | OpenAI: GPT-5.4 | text, image, file | text | 192 | 192 | 1,050,000 | `{"effort": "low"}` | 2.5 | 15 | 0.25 / - |
+| `google/gemini-3.5-flash` | Google: Gemini 3.5 Flash | text, image, video, file, audio | text | 512 | 512 | 1,048,576 | - | 1.5 | 9 | 0.15 / 0.083333 |
+| `openai/gpt-5.5` | OpenAI: GPT-5.5 | file, image, text | text | 192 | 192 | 1,050,000 | `{"effort": "low"}` | 5 | 30 | 0.5 / - |
+| `anthropic/claude-sonnet-4.6` | Anthropic: Claude Sonnet 4.6 | text, image, file | text | 32 | 96 | 1,000,000 | - | 3 | 15 | 0.3 / 3.75 |
+| `anthropic/claude-opus-4.8` | Anthropic: Claude Opus 4.8 | text, image, file | text | 32 | 96 | 1,000,000 | - | 5 | 25 | 0.5 / 6.25 |
 
-timeout_seconds, aspect_ratio, image_config, provider routing, max_tokens, temperature, top_p, top_k, seed, stop, penalties, reasoning, response_format, structured_outputs, tools, tool_choice, and transforms according to supported_parameters in the live catalog.
+## Request Shape
 
-Operational keyword parameters:
+The wrapper posts an OpenAI-style chat-completions payload to OpenRouter:
 
-- `timeout_seconds`: request or polling timeout, default chosen per provider/domain.
-- `mask`: accepted by `edit` wrappers where relevant; the public mask contract remains black = editable and white = protected.
-- `base_image`: accepted by `remix` as a keyword where a provider supports or needs an anchor image concept.
+```text
+POST https://openrouter.ai/api/v1/chat/completions
+```
 
-## Model Coverage
+The generated payload always includes:
 
-The live catalog is authoritative. Analyze requires image input and text output. Generate requires image output. Edit/remix require both image input and image output. The matrix records every discovered relevant model id.
+- `model`
+- `messages[0].role="user"`
+- `messages[0].content[]` with one text part and one `image_url` part
 
-OpenRouter is a large dynamic aggregator. Coverage is grouped by input/output modality and supported_parameters from the live model catalog; the wrapper validates modality compatibility before calls.
+The image is normalized to a data URL before it is sent.
 
-Coverage classes used by the validation matrix:
+## Accepted Kwargs
 
-| Status | Meaning |
+Operational kwarg:
+
+| Kwarg | Behavior |
 | --- | --- |
-| `official_available` | The model appears in an official catalog or official documentation for this domain. |
-| `implemented` | The wrapper can form a request for the model using this repository's normalized contract. |
-| `tested` | A live request was attempted and returned a provider result or normalized provider rejection. |
-| `blocked` | The live attempt was blocked by key, quota, billing, rate limit, region, gating, or provider policy. |
-| `incompatible` | The official model/schema cannot be normalized safely into this domain's public contract. |
+| `timeout_seconds` | HTTP timeout for the OpenRouter request. Defaults to `60`. |
 
-## Domain Notes
+Documented provider payload kwargs:
 
-The wrapper preserves the repository return shape exactly. Provider-side safety blocks, auth failures, billing failures, unsupported combinations, and transport failures are converted into the normalized `warnings` field for image operations or the normalized `output` field for analyze operations.
+| Kwarg | Behavior |
+| --- | --- |
+| `max_tokens` | Forwarded as a top-level OpenRouter payload field. |
+| `max_completion_tokens` | Forwarded as a top-level OpenRouter payload field. |
+| `temperature` | Forwarded as a top-level OpenRouter payload field. |
+| `top_p` | Forwarded as a top-level OpenRouter payload field. |
+| `top_k` | Forwarded as a top-level OpenRouter payload field. |
+| `frequency_penalty` | Forwarded as a top-level OpenRouter payload field. |
+| `presence_penalty` | Forwarded as a top-level OpenRouter payload field. |
+| `repetition_penalty` | Forwarded as a top-level OpenRouter payload field. |
+| `seed` | Forwarded as a top-level OpenRouter payload field. |
+| `stop` | Forwarded as a top-level OpenRouter payload field. |
+| `stream` | Forwarded as a top-level OpenRouter payload field. The validated calls use `False`. |
+| `response_format` | Forwarded as a top-level OpenRouter payload field. |
+| `structured_outputs` | Forwarded as a top-level OpenRouter payload field. |
+| `provider` | Forwarded as a top-level OpenRouter payload field. |
+| `reasoning` | Forwarded as a top-level OpenRouter payload field. |
+| `tools` | Forwarded as a top-level OpenRouter payload field. |
+| `tool_choice` | Forwarded as a top-level OpenRouter payload field. |
+| `transforms` | Forwarded as a top-level OpenRouter payload field. |
 
-For dynamic providers, the Markdown page is intentionally family-oriented. Provider model availability is dynamic; use the official provider docs and your own credentials for live production checks.
+Additional provider-native kwargs are also forwarded as top-level payload fields
+when their value is not `None`.
+
+## Model Parameter Notes
+
+The local snapshot uses these parameters for image analysis examples:
+
+| Model | Direct cap | Structured cap | Suggested direct kwargs |
+| --- | ---: | ---: | --- |
+| `qwen/qwen3.7-plus` | 32 | 96 | `temperature=0`, `top_p=1` |
+| `minimax/minimax-m3` | 64 | 128 | `temperature=0`, `top_p=1` |
+| `google/gemini-3.1-flash-lite` | 64 | 128 | `temperature=0`, `top_p=1` |
+| `openai/gpt-5.4` | 192 | 192 | `reasoning={"effort": "low"}` |
+| `google/gemini-3.5-flash` | 512 | 512 | `temperature=0`, `top_p=1` |
+| `openai/gpt-5.5` | 192 | 192 | `reasoning={"effort": "low"}` |
+| `anthropic/claude-sonnet-4.6` | 32 | 96 | `temperature=0`, `top_p=1` |
+| `anthropic/claude-opus-4.8` | 32 | 96 | - |
+
+Structured fallback payloads can use `response_format` with a JSON schema and
+`provider={"require_parameters": True}` when the caller needs strict JSON.
+
+For GPT reasoning models, the local validation flow also allows retrying without
+`reasoning` when the direct reasoning request returns an ambiguous answer.
 
 ## Python Example
 
-~~~python
+```python
 from easy_ai_clients import image
 
 result = image.analyze(
     "Describe the important visual details.",
     "input.png",
     api="openrouter",
+    model="qwen/qwen3.7-plus",
+    max_tokens=32,
+    temperature=0,
+    top_p=1,
 )
-print(result)
-~~~
 
-## Pricing Notes
+print(result["output"])
+print(result["cost_usd"])
+```
 
-Costs are exact only when the provider exposes usage or fixed per-request pricing that this repository can map deterministically. Otherwise the wrapper returns 0.0 with a warning or with the safest available estimate. OpenRouter costs can be refined with image.update_cost("analyze", result, api="openrouter") when a request_id is available.
+## Cost Behavior
 
-## Validation Note
+For OpenRouter analyze calls, the wrapper uses the best cost value available at
+the time of the request:
 
-The bundled unit tests validate imports and dispatcher routing without calling paid provider APIs. Provider model catalogs, account access, prices, and rate limits can change independently of this package; run your own provider smoke tests with your credentials before relying on a specific model in production.
+1. `usage.cost` from the chat-completions response, when present.
+2. `total_cost` from `GET https://openrouter.ai/api/v1/generation?id=<request_id>`
+   when the initial response has a `request_id`.
+3. `0.0` with unavailable cost metadata when no cost value is available.
+
+You can refresh a result later when it has a `request_id`:
+
+```python
+from easy_ai_clients import image
+
+updated = image.update_cost("analyze", result, api="openrouter")
+```
+
+## Compatibility Notes
+
+This page is not a live validation report.
+
+The OpenRouter analyze wrapper does not enforce a local allowlist or local
+model-compatibility gate. It forwards the selected `model` and accepted kwargs
+to OpenRouter. OpenRouter or the routed provider can still reject a model,
+account, parameter, image, quota, or billing state at request time.

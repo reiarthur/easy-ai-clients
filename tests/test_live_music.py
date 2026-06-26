@@ -8,6 +8,7 @@ the caller. Normal local validation keeps this gate cleared.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,28 @@ PROVIDER_DURATION = {
     "google": 30,
     "runware": 30,
 }
+MODEL_DURATION = {
+    "ace_step_v1_5_turbo": 10,
+    "AceStep_1_5_Turbo": 10,
+    "ace_step_1_5_xl_turbo_int8": 10,
+    "AceStep_1_5_XL_Turbo_INT8": 10,
+    "eleven_music": 3,
+    "eleven_music_v2": 3,
+    "music_v2": 3,
+    "lyria_3_clip_preview": 30,
+    "lyria-3-clip-preview": 30,
+    "lyria_3_pro_preview": 15,
+    "lyria-3-pro-preview": 15,
+    "ace_step_v1_5_xl_base": 30,
+    "runware:ace-step@v1.5-xl-base": 30,
+    "ace_step_v1_5_xl_sft": 30,
+    "runware:ace-step@v1.5-xl-sft": 30,
+    "ace_step_v1_5_xl_turbo": 30,
+    "runware:ace-step@v1.5-xl-turbo": 30,
+    "runware:ace-step@v1.5-turbo": 30,
+}
+POLL_INTERVAL_SECONDS = 10
+POLL_TIMEOUT_SECONDS = 900
 
 PUBLIC_GENERATION_KEYS = {
     "provider",
@@ -59,7 +82,10 @@ def _require_live_enabled():
 
 def _load_credentials():
     if os.getenv(ENV_FILE_ENV):
-        load_dotenv(os.environ[ENV_FILE_ENV], override=False)
+        env_path = Path(os.environ[ENV_FILE_ENV])
+        if not env_path.is_absolute():
+            env_path = ROOT / env_path
+        load_dotenv(env_path, override=False)
     load_dotenv(LOCAL_ENV_FILE, override=False)
 
 
@@ -88,20 +114,77 @@ def test_live_music_generation_smoke():
     api = _selected_api()
     _require_env(api)
 
+    model = str(os.getenv(MODEL_ENV) or "").strip()
     kwargs = {
         "lyrics": "[Verse]\nThe morning opens wide\n[Chorus]\nWe keep the light alive",
         "api": api,
-        "prompt": "short hopeful acoustic pop with clear lead vocal",
-        "duration": PROVIDER_DURATION[api],
+        "style": "pop",
+        "gender": "female",
+        "duration": MODEL_DURATION.get(model, PROVIDER_DURATION[api]),
     }
-    model = str(os.getenv(MODEL_ENV) or "").strip()
     if model:
         kwargs["model"] = model
 
-    generation = music.generate(**kwargs)
+    output_path = None
+    try:
+        generation = music.generate(**kwargs)
+        _assert_public_generation(generation, api)
 
+        generation = _wait_for_completed_generation(music, generation, api)
+        output_path = generation.get("output_path")
+        downloaded = music.download_result(generation)
+        _assert_public_generation(downloaded, api)
+
+        output_path = downloaded.get("output_path")
+        assert output_path
+        path = Path(output_path)
+        assert path.exists()
+        assert path.stat().st_size > 0
+    finally:
+        _cleanup_live_output(output_path)
+
+
+def _wait_for_completed_generation(music, generation, api):
+    deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        updated = music.get_status(generation)
+        _assert_public_generation(updated, api)
+        if updated["status"] == "completed":
+            return updated
+        if updated["status"] == "failed":
+            pytest.fail(f"live music generation failed for provider {api}")
+        time.sleep(POLL_INTERVAL_SECONDS)
+    pytest.fail(f"live music generation timed out for provider {api}")
+
+
+def _assert_public_generation(generation, api):
     assert set(generation) == PUBLIC_GENERATION_KEYS
     assert generation["provider"] == api
     assert generation["request_id"]
     assert generation["status"] in {"submitted", "running", "completed"}
     assert "raw_response" not in generation
+
+
+def _cleanup_live_output(output_path):
+    if not output_path:
+        return
+    path = Path(output_path)
+    try:
+        resolved = path.resolve()
+        temp_root = (Path.cwd() / "outputs" / "music" / "temp").resolve()
+        resolved.relative_to(temp_root)
+    except (OSError, ValueError):
+        return
+    if resolved.is_file():
+        resolved.unlink()
+    _remove_empty_parents(resolved.parent, temp_root)
+
+
+def _remove_empty_parents(path, stop):
+    current = path
+    while current != stop and current.is_relative_to(stop):
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        current = current.parent

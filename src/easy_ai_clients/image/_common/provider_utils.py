@@ -11,7 +11,7 @@ import io
 import json
 import time
 from collections.abc import Iterable
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from PIL import Image
@@ -450,6 +450,39 @@ def analyze_result(
     }
 
 
+def extract_openrouter_usage_cost(payload: JsonDict) -> Decimal | None:
+    """Extract exact OpenRouter cost from usage or generation metadata."""
+
+    if not isinstance(payload, dict):
+        return None
+
+    usage = payload.get("usage")
+    if isinstance(usage, dict):
+        for key in ("cost", "total_cost"):
+            cost = _decimal_or_none(usage.get(key))
+            if cost is not None:
+                return cost
+    else:
+        cost = _decimal_or_none(usage)
+        if cost is not None:
+            return cost
+
+    for key in ("total_cost", "cost"):
+        cost = _decimal_or_none(payload.get(key))
+        if cost is not None:
+            return cost
+    return None
+
+
+def _decimal_or_none(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
 def get_openrouter_models(*, timeout_seconds: int = 60) -> list[JsonDict]:
     """Return cached OpenRouter model metadata used for capability validation.
 
@@ -522,10 +555,18 @@ def update_openrouter_cost_from_request_id(
     output = str(result_dict.get("output") or "")
     input_text = str(result_dict.get("input_text") or "")
     current_cost = result_dict.get("cost_usd") or 0.0
+    current_source = result_dict.get("cost_source")
+    current_is_estimated = result_dict.get("cost_is_estimated", True)
+    current_details = result_dict.get("cost_details")
+    if not isinstance(current_details, dict):
+        current_details = {}
     if not request_id:
         return analyze_result(
             request_id=request_id,
             cost_usd=current_cost,
+            cost_source=current_source,
+            cost_is_estimated=bool(current_is_estimated),
+            cost_details=current_details,
             input_text=input_text,
             output=output,
         )
@@ -539,17 +580,23 @@ def update_openrouter_cost_from_request_id(
     )
     parsed = response_json(response)
     payload = parsed.get("data") or parsed
-    total_cost = payload.get("total_cost") if isinstance(payload, dict) else None
+    total_cost = extract_openrouter_usage_cost(payload)
     if total_cost is None:
         return analyze_result(
             request_id=request_id,
             cost_usd=current_cost,
+            cost_source=current_source,
+            cost_is_estimated=bool(current_is_estimated),
+            cost_details=current_details,
             input_text=input_text,
             output=output,
         )
     return analyze_result(
         request_id=request_id,
-        cost_usd=float(total_cost),
+        cost_usd=total_cost,
+        cost_source="openrouter_generation_lookup",
+        cost_is_estimated=False,
+        cost_details={"request_id": request_id},
         input_text=input_text,
         output=output,
     )
@@ -566,13 +613,21 @@ def update_openrouter_image_cost_from_request_id(
     request_id = str(result_dict.get("request_id") or "")
     base64_value = str(result_dict.get("base64") or "")
     warnings = str(result_dict.get("warnings") or "")
-    current_cost = result_dict.get("cust_usd") or 0.0
+    current_cost = result_dict.get("cust_usd") or result_dict.get("cost_usd") or 0.0
+    current_source = result_dict.get("cost_source")
+    current_is_estimated = result_dict.get("cost_is_estimated", True)
+    current_details = result_dict.get("cost_details")
+    if not isinstance(current_details, dict):
+        current_details = {}
     if not request_id:
         return image_result(
             base64_value=base64_value,
             warnings=warnings,
             cust_usd=current_cost,
             request_id=request_id,
+            cost_source=current_source,
+            cost_is_estimated=bool(current_is_estimated),
+            cost_details=current_details,
         )
 
     response = request(
@@ -584,17 +639,23 @@ def update_openrouter_image_cost_from_request_id(
     )
     parsed = response_json(response)
     payload = parsed.get("data") or parsed
-    total_cost = payload.get("total_cost") if isinstance(payload, dict) else None
+    total_cost = extract_openrouter_usage_cost(payload)
     if total_cost is None:
         return image_result(
             base64_value=base64_value,
             warnings=warnings,
             cust_usd=current_cost,
             request_id=request_id,
+            cost_source=current_source,
+            cost_is_estimated=bool(current_is_estimated),
+            cost_details=current_details,
         )
     return image_result(
         base64_value=base64_value,
         warnings=warnings,
-        cust_usd=float(total_cost),
+        cust_usd=total_cost,
         request_id=request_id,
+        cost_source="openrouter_generation_lookup",
+        cost_is_estimated=False,
+        cost_details={"request_id": request_id},
     )

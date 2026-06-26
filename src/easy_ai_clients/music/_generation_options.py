@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 
-from ._model_registry import DEFAULT_MODELS, MODEL_ALIASES, model_key_for
+from ._model_registry import DEFAULT_MODEL_KEYS, MODEL_ALIASES
 
 
 def get_generation_options(api=None, model=None):
@@ -57,10 +57,7 @@ def _index_summary():
         "models": _model_keys(),
         "apis": _api_keys(),
         "model_apis": {model_key: _apis_for_model(model_key) for model_key in _model_keys()},
-        "default_models": {
-            provider: model_key_for(provider, native_model)
-            for provider, native_model in DEFAULT_MODELS.items()
-        },
+        "default_models": dict(DEFAULT_MODEL_KEYS),
     }
 
 
@@ -124,9 +121,9 @@ def _base_text_parameters(provider):
             False,
             None,
             "Exact file stem from easy_ai_clients/music/styles/*.py, without the .py extension.",
-            "Builds a local prompt and safe kwargs from a preset. If prompt is also passed, the explicit prompt replaces the preset prompt.",
+            "Builds a local prompt from preset style_prompts and voice_presets. If prompt is also passed, the explicit prompt replaces the preset style prompt.",
             "easy_ai_clients.music._style_adapter",
-            "Use a reusable local style preset.",
+            "Use a reusable local style preset. Preset prompt sizes fall back from large to medium to small only after MusicInputLimitError.",
         ),
         "language": _option(
             False,
@@ -135,6 +132,22 @@ def _base_text_parameters(provider):
             "Local language override for style-generated prompts. ACE-Step models also receive mapped vocal_language.",
             "easy_ai_clients.music._style_adapter",
             "Use with style to override the preset vocal language.",
+        ),
+        "gender": _option(
+            False,
+            None,
+            "Accepted values: male, female, both.",
+            "Local voice-selection control used only to build prompt text from style voice_presets or generic voice guidance.",
+            "easy_ai_clients.music._style_adapter",
+            "Use to request male, female, or duet-style voice guidance.",
+        ),
+        "voice_description": _option(
+            False,
+            None,
+            "Free-form voice description text.",
+            "Local prompt guidance that overrides style preset and generic gender voice guidance.",
+            "easy_ai_clients.music._style_adapter",
+            "Use when you need a specific vocal description.",
         ),
         "prompt": _option(
             False,
@@ -154,8 +167,8 @@ def _deapi_parameters(native_model):
             "duration": _option(
                 False,
                 60,
-                "Integer or number in seconds. Accepts 10 to 600.",
-                "Sets the duration sent in the payload. When omitted, the wrapper sends 60.",
+                "Integer, float, or numeric string in seconds. Numeric values are clamped to 10 to 300. Invalid or missing values use 60.",
+                "Sets the duration sent in the payload. The wrapper always sends a normalized duration.",
                 "duration",
                 "Use to request a shorter or longer song within the local limit.",
             ),
@@ -224,9 +237,9 @@ def _elevenlabs_parameters():
     parameters = _base_text_parameters("elevenlabs")
     parameters["duration"] = _option(
         False,
-        60,
-        "Number in seconds. Accepts 3 to 600.",
-        "The wrapper converts this to music_length_ms. When omitted, it uses 60 seconds.",
+        None,
+        "Integer, float, or numeric string in seconds. Numeric values are clamped to 3 to 600. Invalid or missing values are omitted.",
+        "The wrapper converts valid duration values to music_length_ms. When omitted or invalid, music_length_ms is not sent.",
         "music_length_ms",
         "Use to control composition duration.",
     )
@@ -235,19 +248,39 @@ def _elevenlabs_parameters():
 
 def _google_parameters(native_model):
     parameters = _base_text_parameters("google")
-    practical_use = "Accepted to keep the standardized contract, but it does not change the provider payload."
     if native_model == "lyria-3-clip-preview":
-        practical_use = (
-            "Accepted for standardization and ignored in the payload. "
-            "When style builds the prompt, the text targets about 30 seconds."
+        parameters["duration"] = _option(
+            False,
+            None,
+            "Ignored. Lyria Clip output is fixed at about 30 seconds.",
+            "Not sent and not added to the prompt.",
+            "Not sent",
+            "Use Pro when prompt-guided duration is required.",
         )
+        parameters["token_preflight"] = _option(
+            False,
+            True,
+            "Google countTokens is run against the final contents payload before generateContent.",
+            "Blocks generation when the final contents exceed 131072 input tokens or token counting fails.",
+            "models/{model}:countTokens",
+            "Protects the generation call from over-limit inputs.",
+        )
+        return parameters
     parameters["duration"] = _option(
         False,
         None,
-        "Accepted by the local wrapper, but ignored in the provider payload.",
-        "Not sent to the provider.",
-        "Not sent",
-        practical_use,
+        "Integer, float, or numeric string in seconds. Numeric values are clamped to 15 to 180. Invalid or missing values are omitted.",
+        "Not sent as a provider field. Valid values are added to the prompt as natural English target duration text.",
+        "contents[].parts[].text",
+        "Use to guide Lyria Pro toward an approximate song duration.",
+    )
+    parameters["token_preflight"] = _option(
+        False,
+        True,
+        "Google countTokens is run against the final contents payload before generateContent.",
+        "Blocks generation when the final contents exceed 131072 input tokens or token counting fails.",
+        "models/{model}:countTokens",
+        "Protects the generation call from over-limit inputs.",
     )
     return parameters
 
@@ -258,17 +291,17 @@ def _runware_parameters(native_model):
         {
             "duration": _option(
                 False,
-                None,
-                "Number in seconds. Accepts 30 to 300 when provided.",
-                "Optional. When omitted, it is not sent in the payload.",
+                60,
+                "Integer, float, or numeric string in seconds. Numeric values are clamped to 30 to 300. Invalid or missing values use 60.",
+                "The wrapper always sends a normalized duration.",
                 "duration",
-                "Use only when you want to send this duration control to the provider.",
+                "Use to request a shorter or longer song within the local limit.",
             ),
             "steps": _option(
                 False,
-                None,
+                _runware_default_steps(native_model),
                 _runware_steps_values(native_model),
-                "Optional. When omitted, it is not sent in the payload.",
+                "Sent as steps. When omitted, the wrapper sends a safe model-specific default.",
                 "steps",
                 "Use to adjust the inference effort allowed by the model.",
             ),
@@ -306,15 +339,6 @@ def _runware_parameters(native_model):
             ),
         }
     )
-    if native_model == "runware:ace-step@v1.5-xl-sft":
-        parameters["negative_prompt"] = _option(
-            False,
-            None,
-            "Free-form text. Accepted only by the Runware XL SFT model.",
-            "Sent as negativePrompt when not None. With style, it can come from the preset negative_traits.",
-            "negativePrompt",
-            "Use to list characteristics the model should avoid.",
-        )
     return parameters
 
 
@@ -329,6 +353,19 @@ def _runware_steps_values(native_model):
     }:
         return "Accepts 1 to 300."
     return "Accepts 1 to 20."
+
+
+def _runware_default_steps(native_model):
+    if native_model == "runware:ace-step@v1.5-turbo":
+        return 10
+    if native_model == "runware:ace-step@v1.5-xl-turbo":
+        return 8
+    if native_model in {
+        "runware:ace-step@v1.5-xl-base",
+        "runware:ace-step@v1.5-xl-sft",
+    }:
+        return 100
+    return 8
 
 
 def _option(required, default, accepted_values, description, provider_field, practical_use):

@@ -1,5 +1,6 @@
 """Public dispatcher for music generation."""
 
+from ._errors import MusicInputLimitError
 from ._generation_options import get_generation_options as _get_generation_options
 from ._lyrics_prompt import build_lyrics_prompt as _build_lyrics_prompt
 from ._model_registry import PROVIDERS as _PROVIDERS
@@ -15,6 +16,7 @@ from ._router import (
 from ._style_adapter import get_style_presets as _get_style_presets
 
 __all__ = [
+    "MusicInputLimitError",
     "available_apis",
     "build_lyrics_prompt",
     "download_result",
@@ -121,22 +123,38 @@ def get_style_presets(fields=None, styles=None):
     return _get_style_presets(fields=fields, styles=styles)
 
 
-def build_lyrics_prompt(duration_seconds, reference_text=None, lyrics_text=None):
+def build_lyrics_prompt(
+    prompt,
+    lyrics_text=None,
+    duration=None,
+    style=None,
+    gender=None,
+    voice_description=None,
+    api=None,
+):
     """Build prompt text for an external LLM to create or adapt song lyrics.
 
     Args:
-        duration_seconds: Required. Target sung duration in seconds. Must be a
-            positive number.
-        reference_text: Optional. Style, genre, voice, mood, language, topic,
-            structure, or other creative direction.
+        prompt: Required. User creative intent for the lyric.
         lyrics_text: Optional. Existing lyric text to adapt.
+        duration: Optional. Approximate target duration in seconds.
+        style: Optional. Exact predefined style name.
+        gender: Optional. Accepted values: `"male"`, `"female"`, or `"both"`.
+        voice_description: Optional. Direct voice guidance. Overrides preset
+            and generic gender voice guidance.
+        api: Optional. Use `"elevenlabs"` to add lyric-format guidance tuned
+            for that music generator. Other values preserve the default prompt.
 
     Returns:
         A dictionary with exactly `system_prompt` and `prompt`. This function
         does not call provider APIs or language model APIs.
     """
     return _build_lyrics_prompt(
-        duration_seconds=duration_seconds,
-        reference_text=reference_text,
+        prompt=prompt,
         lyrics_text=lyrics_text,
+        duration=duration,
+        style=style,
+        gender=gender,
+        voice_description=voice_description,
+        api=api,
     )

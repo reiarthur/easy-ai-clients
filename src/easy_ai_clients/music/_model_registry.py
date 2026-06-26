@@ -13,7 +13,9 @@ MODEL_ALIASES = {
         "ace_step_1_5_xl_turbo_int8": "AceStep_1_5_XL_Turbo_INT8",
     },
     "elevenlabs": {
-        "eleven_music": "music_v1",
+        "eleven_music": "music_v2",
+        "eleven_music_v2": "music_v2",
+        "music_v2": "music_v2",
     },
     "google": {
         "lyria_3_clip_preview": "lyria-3-clip-preview",
@@ -29,9 +31,16 @@ MODEL_ALIASES = {
 
 DEFAULT_MODELS = {
     "deapi": "AceStep_1_5_Turbo",
-    "elevenlabs": "music_v1",
+    "elevenlabs": "music_v2",
     "google": "lyria-3-clip-preview",
     "runware": "runware:ace-step@v1.5-xl-turbo",
+}
+
+DEFAULT_MODEL_KEYS = {
+    "deapi": "ace_step_v1_5_turbo",
+    "elevenlabs": "eleven_music",
+    "google": "lyria_3_clip_preview",
+    "runware": "ace_step_v1_5_xl_turbo",
 }
 
 
@@ -50,7 +59,12 @@ def resolve_model(provider, model):
         ValueError: If the model is empty or unsupported for the provider.
     """
     if model is None or not str(model).strip():
-        model = DEFAULT_MODELS.get(provider)
+        model_key = DEFAULT_MODEL_KEYS.get(provider)
+        native_model = DEFAULT_MODELS.get(provider)
+        if not model_key or not native_model:
+            raise ValueError("model is required")
+        return native_model, model_key
+
     if not model:
         raise ValueError("model is required")
 

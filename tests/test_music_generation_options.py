@@ -9,6 +9,7 @@ REMOVED_PUBLIC_PARAMETERS = {
     "output_format",
     "output_type",
     "include_cost",
+    "negative_prompt",
     "number_results",
     "audio_settings",
     "ttl",
@@ -22,6 +23,8 @@ def test_full_catalog_contains_all_models_and_shared_keys():
 
     assert "ace_step_1_5_xl_turbo_int8" in catalog
     assert "eleven_music" in catalog
+    assert "eleven_music_v2" in catalog
+    assert "music_v2" in catalog
     assert "lyria_3_clip_preview" in catalog
     assert "ace_step_v1_5_xl_sft" in catalog
     assert "duration" in catalog["ace_step_v1_5_turbo"]["deapi"]
@@ -38,6 +41,11 @@ def test_language_option_is_documented_as_style_adapter_control():
             language = parameters["language"]
             assert language["provider_field"] == "easy_ai_clients.music._style_adapter"
             assert "pt-BR" in language["accepted_values"], (model_key, api)
+            assert parameters["gender"]["provider_field"] == "easy_ai_clients.music._style_adapter"
+            assert "male" in parameters["gender"]["accepted_values"]
+            assert parameters["voice_description"]["provider_field"] == (
+                "easy_ai_clients.music._style_adapter"
+            )
 
 
 def test_filter_by_api():
@@ -71,7 +79,7 @@ def test_filter_by_api_and_model():
 
     assert list(catalog) == ["ace_step_v1_5_xl_sft"]
     assert list(catalog["ace_step_v1_5_xl_sft"]) == ["runware"]
-    assert "negative_prompt" in catalog["ace_step_v1_5_xl_sft"]["runware"]
+    assert "negative_prompt" not in catalog["ace_step_v1_5_xl_sft"]["runware"]
 
 
 def test_summary_mode():
@@ -84,6 +92,8 @@ def test_summary_mode():
             "ace_step_v1_5_turbo",
             "ace_step_1_5_xl_turbo_int8",
             "eleven_music",
+            "eleven_music_v2",
+            "music_v2",
             "lyria_3_clip_preview",
             "lyria_3_pro_preview",
             "ace_step_v1_5_xl_base",
@@ -95,6 +105,8 @@ def test_summary_mode():
             "ace_step_v1_5_turbo": ["deapi", "runware"],
             "ace_step_1_5_xl_turbo_int8": ["deapi"],
             "eleven_music": ["elevenlabs"],
+            "eleven_music_v2": ["elevenlabs"],
+            "music_v2": ["elevenlabs"],
             "lyria_3_clip_preview": ["google"],
             "lyria_3_pro_preview": ["google"],
             "ace_step_v1_5_xl_base": ["runware"],
@@ -124,28 +136,30 @@ def test_invalid_filters_return_summary():
     )
 
 
-def test_google_duration_is_accepted_but_ignored():
+def test_google_duration_contracts_are_model_specific():
     from easy_ai_clients import music
 
     catalog = music.get_generation_options(api="google")
 
-    for model_options in catalog.values():
-        duration = model_options["google"]["duration"]
-        assert "ignored" in duration["accepted_values"]
-        assert duration["provider_field"] == "Not sent"
+    clip = catalog["lyria_3_clip_preview"]["google"]
+    pro = catalog["lyria_3_pro_preview"]["google"]
+
+    assert "Ignored" in clip["duration"]["accepted_values"]
+    assert clip["duration"]["provider_field"] == "Not sent"
+    assert "15 to 180" in pro["duration"]["accepted_values"]
+    assert pro["duration"]["provider_field"] == "contents[].parts[].text"
+    assert clip["token_preflight"]["provider_field"] == "models/{model}:countTokens"
+    assert pro["token_preflight"]["provider_field"] == "models/{model}:countTokens"
 
 
-def test_negative_prompt_only_appears_for_runware_xl_sft():
+def test_negative_prompt_never_appears_for_music():
     from easy_ai_clients import music
 
     catalog = music.get_generation_options()
 
     for model_key, api_options in catalog.items():
         for api, parameters in api_options.items():
-            has_negative_prompt = "negative_prompt" in parameters
-            assert has_negative_prompt == (
-                api == "runware" and model_key == "ace_step_v1_5_xl_sft"
-            )
+            assert "negative_prompt" not in parameters, (model_key, api)
 
 
 def test_internal_and_removed_parameters_do_not_appear():

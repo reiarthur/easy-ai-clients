@@ -52,18 +52,50 @@ generation = music.download_result(generation)
 
 If both are passed, `prompt` wins.
 
+When `style` is used, the local preset provides `style_prompts` and
+`voice_presets`. `style_prompts` has `small`, `medium`, and `large` strings.
+`voice_presets` has `default_gender` plus `small`, `medium`, and `large`
+male/female maps. If provider input limits are exceeded, the router tries
+smaller preset prompt variants before raising `MusicInputLimitError`.
+
+Local prompt controls:
+
 | Parameter | Behavior |
 | --- | --- |
-| `duration` | Sent as `duration` when provided. Accepts `30` to `300`. |
-| `steps` | Sent as `steps` when provided. XL Base and XL SFT accept `1` to `300`; Turbo and XL Turbo accept `1` to `20`. |
+| `language` | Overrides preset language and maps to ACE-Step `settings.vocalLanguage`. |
+| `gender` | Selects `male`, `female`, or `both` voice guidance from `voice_presets`. |
+| `voice_description` | Replaces preset voice guidance with caller-provided voice text. |
+
+Duration behavior:
+
+| Standard model key | Native model ID | Min | Max | Missing or invalid `duration` | Provider application |
+| --- | --- | ---: | ---: | --- | --- |
+| `ace_step_v1_5_turbo` | `runware:ace-step@v1.5-turbo` | `30s` | `300s` | Uses `60s` | Sent as `duration` |
+| `ace_step_v1_5_xl_base` | `runware:ace-step@v1.5-xl-base` | `30s` | `300s` | Uses `60s` | Sent as `duration` |
+| `ace_step_v1_5_xl_sft` | `runware:ace-step@v1.5-xl-sft` | `30s` | `300s` | Uses `60s` | Sent as `duration` |
+| `ace_step_v1_5_xl_turbo` | `runware:ace-step@v1.5-xl-turbo` | `30s` | `300s` | Uses `60s` | Sent as `duration` |
+
+| Parameter | Behavior |
+| --- | --- |
+| `duration` | Always sent as `duration`. Numeric values are clamped to `30` to `300`. Missing or invalid values use `60`. |
+| `steps` | Sent as `steps`. When omitted, the wrapper sends a safe model-specific default. XL Base and XL SFT accept `1` to `300`; Turbo and XL Turbo accept `1` to `20`. |
 | `bpm` | Sent as `settings.bpm` when provided. Accepts `30` to `300`. |
 | `key_scale` | Sent as `settings.keyScale` when provided. |
 | `time_signature` | Sent as `settings.timeSignature`. Accepts `2`, `3`, `4`, or `6`. |
 | `vocal_language` | Sent as `settings.vocalLanguage`. Must be `unknown` or a documented ISO 639-1 value in the local wrapper list. |
-| `negative_prompt` | Public only for `runware:ace-step@v1.5-xl-sft`. Sent as `negativePrompt` when not `None`. |
 
-`negative_prompt` is rejected by presence for all Runware models except
-`runware:ace-step@v1.5-xl-sft`, including `None`.
+`negative_prompt` is rejected by presence for all Runware music models,
+including `None`.
+
+Input guards run before the generation call:
+
+| Field | Limit |
+| --- | ---: |
+| `positivePrompt` | `3000` characters |
+| `settings.lyrics` | `3000` characters |
+
+Over-limit input raises `music.MusicInputLimitError` with repair prompts for
+the exceeded fields.
 
 Removed technical kwargs are rejected before provider dispatch:
 `audio_settings`, `include_cost`, `number_results`, `output_format`,
@@ -120,4 +152,3 @@ If the provider response does not include a numeric cost, `cost_usd` stays
 
 Raw provider responses, credentials, auth headers, and audio URLs are not
 returned in the public dictionary.
-

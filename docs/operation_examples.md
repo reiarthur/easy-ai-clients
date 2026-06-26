@@ -124,22 +124,43 @@ generation = music.generate(
     api="runware",
     model="ace_step_v1_5_xl_turbo",
     style="rock",
+    duration=60,
+    gender="both",
 )
 
 status = music.get_status(generation)
 result = music.download_result(status)
 
 options = music.get_generation_options(api="runware")
-styles = music.get_style_presets(fields=["id", "description"], styles=["rock"])
+styles = music.get_style_presets(
+    fields=["id", "style_prompts", "voice_presets"],
+    styles=["rock"],
+)
 lyrics_prompt = music.build_lyrics_prompt(
-    60,
-    reference_text="Brazilian Portuguese pop rock with a hopeful chorus.",
+    "Brazilian Portuguese pop rock with a hopeful chorus.",
+    duration=60,
+    style="rock",
+    gender="female",
+    api="elevenlabs",
 )
 ```
 
 Music results keep only the safe normalized generation fields. Raw provider
 responses, auth headers, credentials, provider audio URLs, and large audio
 payloads are not returned.
+
+Over-limit music input raises `music.MusicInputLimitError` before generation:
+
+```python
+try:
+    music.generate(
+        lyrics="...",
+        api="runware",
+        prompt="upbeat pop rock",
+    )
+except music.MusicInputLimitError as exc:
+    print(exc.repair_prompts)
+```
 
 ## Video generation
 

@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
+from ._errors import MusicInputLimitError
 from ._model_registry import model_key_for
 
 DEFAULT_TIMEOUT = 180
@@ -394,6 +395,60 @@ def reject_parameter_present(kwargs, parameter, provider):
         raise ValueError(f"{parameter} is not supported for {provider}")
 
 
+def normalize_duration(value, minimum, maximum, default=None):
+    """Return a clamped integer duration or the provider default.
+
+    Args:
+        value: Optional. Public duration value.
+        minimum: Required. Minimum meaningful duration in seconds.
+        maximum: Required. Maximum meaningful duration in seconds.
+        default: Optional. Value returned when `value` is absent or invalid.
+
+    Returns:
+        The normalized duration in seconds, or `default` when absent/invalid.
+    """
+    duration = _parse_duration(value)
+    if duration is None:
+        return default
+    return max(minimum, min(maximum, duration))
+
+
+def duration_phrase(duration):
+    """Return a natural English approximate duration phrase."""
+    minutes, seconds = divmod(int(duration), 60)
+    if minutes and seconds:
+        minute_word = "minute" if minutes == 1 else "minutes"
+        second_word = "second" if seconds == 1 else "seconds"
+        return f"about {minutes} {minute_word} and {seconds} {second_word}"
+    if minutes:
+        minute_word = "minute" if minutes == 1 else "minutes"
+        return f"about {minutes} {minute_word}"
+    second_word = "second" if seconds == 1 else "seconds"
+    return f"about {seconds} {second_word}"
+
+
+def raise_input_limit_error(provider, model, fields):
+    """Raise a public music input-limit exception."""
+    raise MusicInputLimitError(
+        provider=provider,
+        model=model,
+        model_key=model_key_for(provider, model),
+        fields=fields,
+    )
+
+
+def text_limit_field(text, maximum, unit="characters"):
+    """Return limit metadata when text exceeds a maximum length."""
+    observed = len(text or "")
+    if observed <= maximum:
+        return None
+    return {
+        "unit": unit,
+        "maximum": maximum,
+        "observed": observed,
+    }
+
+
 def validate_range(name, value, minimum, maximum, suffix=""):
     """Raise `ValueError` when a numeric value is outside an inclusive range.
 
@@ -406,6 +461,27 @@ def validate_range(name, value, minimum, maximum, suffix=""):
     """
     if not minimum <= value <= maximum:
         raise ValueError(f"{name} must be between {minimum} and {maximum}{suffix}")
+
+
+def _parse_duration(value):
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        if not math.isfinite(float(value)):
+            return None
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            number = float(text)
+        except ValueError:
+            return None
+        if not math.isfinite(number):
+            return None
+        return int(number)
+    return None
 
 
 def start_local_job(
@@ -441,8 +517,11 @@ def start_local_job(
         "status": "running",
         "provider": provider,
         "model": model,
+        "request_id": request_id,
         "output_path": output_path,
         "error": None,
+        "error_type": None,
+        "error_message": None,
     }
     with _LOCAL_JOBS_LOCK:
         _LOCAL_JOBS[request_id] = job
@@ -455,7 +534,9 @@ def start_local_job(
         except Exception as exc:
             with _LOCAL_JOBS_LOCK:
                 job["status"] = "failed"
-                job["error"] = str(exc)
+                job["error_type"] = type(exc).__name__
+                job["error_message"] = str(sanitize(str(exc)))
+                job["error"] = _format_local_job_error(job)
 
     thread = threading.Thread(target=run_worker, daemon=True)
     thread.start()
@@ -527,6 +608,28 @@ def _local_job_ready(request_id):
     if job["status"] == "failed":
         raise LocalJobError(job["error"])
     return job["status"] == "completed"
+
+
+def _format_local_job_error(job):
+    """Build a sanitized local worker error message.
+
+    Args:
+        job: Required. Local job snapshot with provider, model, request ID, and
+            stored exception fields.
+
+    Returns:
+        A compact message safe to expose at the caller boundary.
+    """
+    provider = str(sanitize(job.get("provider") or "unknown"))
+    model = str(sanitize(job.get("model") or "unknown"))
+    request_id = str(sanitize(job.get("request_id") or "unknown"))
+    error_type = str(sanitize(job.get("error_type") or "RuntimeError"))
+    error_message = str(sanitize(job.get("error_message") or "worker failed"))
+    return (
+        "Local music job failed "
+        f"provider={provider} model={model} request_id={request_id}: "
+        f"{error_type}: {error_message}"
+    )
 
 
 def update_local_job_generation(generation):

@@ -65,7 +65,7 @@ pip install -e ".[dev]"
 ```
 
 The package version is defined in both `pyproject.toml` and
-`src/easy_ai_clients/__init__.py`. Both currently show `0.12.0`.
+`src/easy_ai_clients/__init__.py`. Both currently show `0.13.0`.
 
 ## Repository Structure Summary
 
@@ -119,16 +119,67 @@ provider modules. Unknown or missing providers are validated by the relevant
 dispatcher before provider-specific calls where the operation supports that
 preflight.
 
+### Image Analyze Flow
+
+`image.analyze(..., api="openrouter")` requires an explicit OpenRouter model ID.
+The wrapper sends the `model` value exactly as provided, does not use local
+aliases, forwards provider kwargs into the OpenRouter request body, and can
+refresh provider-reported costs through
+`image.update_cost("analyze", result, api="openrouter")`.
+
 ### Music Flow
 
 `music.generate(lyrics, model=None, *, api, style=None, prompt=None, **kwargs)`
 validates a narrow provider/model matrix, resolves standardized model keys to
 native provider model IDs, applies exact style presets when requested, rejects
-removed public kwargs, dispatches to `music._apis.<provider>`, and returns a
-safe normalized public dictionary.
+removed public kwargs including public `negative_prompt`, normalizes duration
+per provider/model, checks provider input limits, dispatches to
+`music._apis.<provider>`, and returns a safe normalized public dictionary.
+
+Music style presets expose `style_prompts.small`, `style_prompts.medium`, and
+`style_prompts.large` for musical direction. They also expose
+`voice_presets.default_gender` plus `voice_presets.small`,
+`voice_presets.medium`, and `voice_presets.large`, each with `male` and
+`female` voice descriptions. `voice_presets.large` preserves the curated voice
+texts.
+
+When a style preset is used, the router starts with large style and voice
+prompts. On `MusicInputLimitError`, it retries `large` style with `medium`
+voice, then `medium` style with `medium` voice, then `medium` style with
+`small` voice, then `small` style with `small` voice. If all attempts exceed
+provider limits, it retries `large` + `large` so the normal repair data is
+raised.
+
+ElevenLabs preset generation uses `style_prompts.large` with
+`voice_presets.small` by default and dispatches public keys `eleven_music`,
+`eleven_music_v2`, and `music_v2` to native `music_v2`. Explicit `music_v1` is
+rejected.
+
+Music input overages raise `music.MusicInputLimitError` before generation. The
+exception exposes JSON-serializable field repair data and does not change the
+successful `music.generate` result schema.
+
+Current music duration behavior:
+
+| Provider | Duration behavior |
+| --- | --- |
+| `deapi` | `10..300` seconds, default `60` when missing or invalid, sent as `duration`. |
+| `elevenlabs` | `3..600` seconds when valid, sent as `music_length_ms`; missing or invalid values omit duration. Native model is `music_v2`. |
+| `google` | Clip ignores duration and stays about `30` seconds; Pro uses valid `15..180` seconds as prompt text. |
+| `runware` | `30..300` seconds, default `60` when missing or invalid, sent as `duration`. |
+
+Current music input limits are `3000` characters for deAPI prompt/lyrics,
+`4100` characters for the final ElevenLabs prompt with lyrics, `131072` Google
+tokens via `countTokens`, and `3000` characters for Runware prompt/lyrics.
 
 Local music helpers `get_generation_options`, `get_style_presets`, and
-`build_lyrics_prompt` do not call provider APIs.
+`build_lyrics_prompt` do not call generation provider APIs. When `style` is a
+valid preset ID, `build_lyrics_prompt` embeds the preset `style_prompts.large`
+text as lyric-writing guidance. With `api="elevenlabs"`, it also uses
+`voice_presets.small`, asks for short singable lines, and avoids vocal-role
+tags such as `[Male Lead]`, `[Female Lead]`, and `[Duet]`. Google Lyria
+generation runs `countTokens` on the final `contents` payload before
+`generateContent`.
 
 ### Video Flow
 
@@ -289,6 +340,15 @@ Remove-Item Env:EASY_AI_CLIENTS_LIVE_VIDEO,Env:EASY_AI_CLIENTS_LIVE_HEYGEN,Env:E
 The test suite includes gated live modules marked with `pytest.mark.live`.
 Default local validation should not call paid provider APIs.
 
+`tests/test_live_music.py` is the gated live music smoke test. When
+`EASY_AI_CLIENTS_LIVE_MUSIC=1` and `EASY_AI_CLIENTS_LIVE_MUSIC_API` are set, it
+loads credentials through `EASY_AI_CLIENTS_ENV_FILE` when provided, submits one
+short music generation, polls with `music.get_status`, downloads with
+`music.download_result`, verifies a non-empty output file, and removes the
+generated file under the current working directory's `outputs/music/temp/`.
+When `EASY_AI_CLIENTS_LIVE_MUSIC_MODEL` is set, the test chooses the shortest
+practical duration for that implemented model.
+
 ## Build, Deployment, And Operations
 
 The project builds Python distributions with `hatchling`:
@@ -333,6 +393,9 @@ runtime process manager was found.
 - Live provider tests must stay gated and credential-free by default.
 - Do not restore the old broad multi-operation music tree unless the user
   explicitly changes the current contract.
+- Music style presets use `style_prompts` and `voice_presets` data and no
+  longer expose `style_prompt`, `voice_preset`, `default_vocal`,
+  `duration_seconds`, `generation_controls`, or `negative_traits`.
 
 ## Technical Debt And Attention Points
 

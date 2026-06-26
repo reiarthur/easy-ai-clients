@@ -10,8 +10,10 @@ safe empty output plus an `error` object:
 - `operation`
 - `model`
 
-Error messages are compacted and redacted so API keys, authorization headers,
-tokens, and matching environment-secret values are not exposed.
+Error messages are compacted and redacted where the dispatcher or adapter owns
+the failure boundary. API keys, authorization headers, tokens, matching
+environment-secret values, signed URLs, and large audio payloads should not be
+exposed.
 
 ## Common Exceptions
 
@@ -20,6 +22,7 @@ tokens, and matching environment-secret values are not exposed.
 | `ValueError` | Local request assembly errors, incompatible local media arguments, or unsupported helper operation. |
 | `TypeError` | Invalid helper/private-adapter call shape. |
 | `RuntimeError` | Missing credentials in direct private adapter paths, provider response normalization failure, or wrapped provider/network failure. |
+| `music.MusicInputLimitError` | Music prompt, lyric, or Google token input exceeds the selected provider/model limit before generation. |
 | `OSError` / `EnvironmentError` | Missing credentials in audio and some provider helper paths. |
 | `requests.HTTPError` / `httpx.HTTPStatusError` | Provider returned a non-success HTTP status and the adapter raised the HTTP exception directly. |
 | `requests.ConnectionError` / `requests.Timeout` | Network failure or timeout after retries. |
@@ -37,9 +40,15 @@ those failures into dictionaries when possible.
 | `audio.generate` | `audio=None`, `words={}`, `cost_usd=0.0`, `warnings`, `error` |
 | `audio.transcribe` | `text=""`, `cost_usd=0.0`, `cost_source="unavailable"`, `cost_lookup_error`, `warnings`, `error` |
 | `image.generate/edit/remix` | `base64=""`, `cust_usd=0.0`, `warnings`, `error` |
-| `image.analyze` | `output` contains the failure text, `cost_usd=0.0`, `warnings`, `error` |
+| `image.analyze` | `output` contains the failure text, `cost_usd=0.0`, `cost_source="unavailable"`, `warnings`, `error` |
 | `music.generate/get_status/download_result` | Local validation and provider wrapper failures can raise; successful results keep the safe normalized music schema |
 | `video.*` | `status="failed"`, `video_url=None`, `cost_usd=0.0`, `cost_source="unavailable"`, `warnings`, `error` |
+
+Music provider parser failures are raised as sanitized exceptions instead of
+raw provider-envelope `KeyError`, `AttributeError`, or invalid audio writes.
+Local music worker failures include provider, model, local request ID, exception
+type, and a sanitized message. They do not add `error`, `raw_response`, provider
+URLs, headers, or audio payloads to the public music result dictionary.
 
 ## Image Warnings
 
@@ -59,6 +68,7 @@ The returned dictionary still contains `cust_usd`, `base64`, `warnings`, and
 be treated as the failure message.
 
 `image.analyze` returns the normalized keys `request_id`, `cost_usd`,
+`cost_currency`, `cost_is_estimated`, `cost_source`, `cost_details`,
 `input_text`, and `output`. Some provider-side failures are represented in the
 `output` string when the adapter can preserve the public return contract.
 
@@ -91,6 +101,40 @@ files, conflicting `path`/`url` arguments, or invalid internal payload shapes.
 including missing `api`, unknown music provider, unsupported model, unknown
 style, missing `style`/`prompt`, removed public kwargs, and unsupported
 `negative_prompt` usage. These failures happen before live provider calls.
+
+Music input-limit failures raise `music.MusicInputLimitError`. The success
+schema does not change. The exception exposes safe repair data:
+
+```python
+try:
+    music.generate(
+        lyrics="...",
+        api="runware",
+        prompt="...",
+    )
+except music.MusicInputLimitError as exc:
+    data = exc.to_dict()
+    repair_prompts = exc.repair_prompts
+```
+
+`repair_prompts` is keyed by exceeded field, such as `caption`, `lyrics`,
+`prompt`, `positivePrompt`, `settings.lyrics`, or `contents`.
+
+When a style preset is used, the music router first retries smaller
+`style_prompts` and `voice_presets` variants before raising
+`MusicInputLimitError`. Explicit caller `prompt` and `voice_description` values
+are not rewritten by this fallback.
+
+Music input limits:
+
+| API | Field | Limit | Unit |
+| --- | --- | ---: | --- |
+| `deapi` | `caption` / prompt | `3000` | characters |
+| `deapi` | `lyrics` | `3000` | characters |
+| `elevenlabs` | final prompt with lyrics appended | `4100` | characters |
+| `google` | final `contents` payload | `131072` | tokens via `countTokens` |
+| `runware` | `positivePrompt` | `3000` | characters |
+| `runware` | `settings.lyrics` | `3000` | characters |
 
 ## Cost Helper Errors
 
