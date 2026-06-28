@@ -143,6 +143,26 @@ def _extract_image_url(payload):
     return ""
 
 
+def _cost_result_kwargs(cost_metadata):
+    """Convert normalized cost metadata into image result builder kwargs."""
+
+    if not isinstance(cost_metadata, dict):
+        return {}
+    details = {}
+    if isinstance(cost_metadata.get("cost_details"), dict):
+        details.update(cost_metadata["cost_details"])
+    if cost_metadata.get("cost_reason"):
+        details.setdefault("cost_reason", cost_metadata["cost_reason"])
+    if cost_metadata.get("pricing_estimate") is not None:
+        details.setdefault("pricing_estimate", cost_metadata["pricing_estimate"])
+    return {
+        "cust_usd": cost_metadata.get("cost_usd") or 0.0,
+        "cost_source": cost_metadata.get("cost_source") or "unavailable",
+        "cost_is_estimated": bool(cost_metadata.get("cost_is_estimated", True)),
+        "cost_details": details,
+    }
+
+
 def _run_image_job(
     *,
     model,
@@ -152,6 +172,7 @@ def _run_image_job(
     build_result,
     operation,
     preprocess_warnings="",
+    cost_metadata=None,
 ):
     """Executa o ciclo completo submit → poll → download para operações de imagem."""
 
@@ -207,6 +228,7 @@ def _run_image_job(
             ),
             warnings=preprocess_warnings,
             request_id=request_id,
+            **_cost_result_kwargs(cost_metadata),
         )
     except Exception as exc:
         return build_result(
@@ -224,6 +246,7 @@ def generate_image(
     build_result,
     seed=None,
     extra_body=None,
+    cost_metadata=None,
 ):
     """Executa a geração text-to-image em um modelo da fal.ai.
 
@@ -252,6 +275,7 @@ def generate_image(
         timeout_seconds=timeout_seconds,
         build_result=build_result,
         operation="generate",
+        cost_metadata=cost_metadata,
     )
 
 
@@ -284,6 +308,7 @@ def edit_image(
     build_result,
     seed=None,
     extra_body=None,
+    cost_metadata=None,
 ):
     """Executa a edição image+prompt em um modelo da fal.ai.
 
@@ -323,6 +348,7 @@ def edit_image(
         build_result=build_result,
         operation="edit",
         preprocess_warnings=warnings,
+        cost_metadata=cost_metadata,
     )
 
 
@@ -336,6 +362,7 @@ def remix_image(
     build_result,
     seed=None,
     extra_body=None,
+    cost_metadata=None,
 ):
     """Executa a geração guiada por referências na fal.ai.
 
@@ -377,6 +404,7 @@ def remix_image(
         timeout_seconds=timeout_seconds,
         build_result=build_result,
         operation="remix",
+        cost_metadata=cost_metadata,
     )
 
 

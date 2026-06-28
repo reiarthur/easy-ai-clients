@@ -14,6 +14,9 @@ def build_edit_result(
     warnings: str = "",
     cust_usd: Decimal | float = 0.0,
     request_id: str = "",
+    cost_source: str | None = None,
+    cost_is_estimated: bool = True,
+    cost_details: dict | None = None,
 ) -> ImageOperationResult:
     """Build the normalized public result for `edit`.
 
@@ -24,6 +27,9 @@ def build_edit_result(
             moderation, billing, or preprocessing notes.
         cust_usd: Exact or safest-known USD cost.
         request_id: Provider request/job id, or `""`.
+        cost_source: Source used for cost calculation.
+        cost_is_estimated: Whether the cost is estimated.
+        cost_details: Provider-specific cost metadata.
 
     Returns:
         Dictionary containing exactly `cust_usd`, `base64`, `warnings`, and
@@ -35,4 +41,7 @@ def build_edit_result(
         warnings=warnings,
         cust_usd=cust_usd,
         request_id=request_id,
+        cost_source=cost_source,
+        cost_is_estimated=cost_is_estimated,
+        cost_details=cost_details,
     )

@@ -102,7 +102,7 @@ such as MP3, FLAC, or Ogg/Opus where the selected provider supports them.
 | --- | --- | --- |
 | `bfl` | `BFL_API_KEY` | [`bfl`](image/generate/bfl.md) |
 | `deepinfra` | `DEEPINFRA_API_KEY` | [`deepinfra`](image/generate/deepinfra.md) |
-| `falai` | `FAL_KEY` | [`falai`](image/generate/falai.md) |
+| `falai` | `FAL_KEY` | [`falai`](image/generate/falai.md); uses fal.ai pricing estimate API for image cost estimates |
 | `fireworks` | `FIREWORKS_API_KEY` | [`fireworks`](image/generate/fireworks.md) |
 | `google` | `GOOGLE_API_KEY` | [`google`](image/generate/google.md) |
 | `huggingface` | `HUGGINGFACE_API_KEY` | [`huggingface`](image/generate/huggingface.md) |
@@ -119,7 +119,7 @@ such as MP3, FLAC, or Ogg/Opus where the selected provider supports them.
 | --- | --- | --- |
 | `bfl` | `BFL_API_KEY` | [`bfl`](image/edit/bfl.md) |
 | `deepinfra` | `DEEPINFRA_API_KEY` | [`deepinfra`](image/edit/deepinfra.md) |
-| `falai` | `FAL_KEY` | [`falai`](image/edit/falai.md) |
+| `falai` | `FAL_KEY` | [`falai`](image/edit/falai.md); uses fal.ai pricing estimate API for image cost estimates |
 | `fireworks` | `FIREWORKS_API_KEY` | [`fireworks`](image/edit/fireworks.md) |
 | `google` | `GOOGLE_API_KEY` | [`google`](image/edit/google.md) |
 | `huggingface` | `HUGGINGFACE_API_KEY` | [`huggingface`](image/edit/huggingface.md) |
@@ -140,7 +140,7 @@ underlying API expects.
 | --- | --- | --- |
 | `bfl` | `BFL_API_KEY` | [`bfl`](image/remix/bfl.md) |
 | `deepinfra` | `DEEPINFRA_API_KEY` | [`deepinfra`](image/remix/deepinfra.md) |
-| `falai` | `FAL_KEY` | [`falai`](image/remix/falai.md) |
+| `falai` | `FAL_KEY` | [`falai`](image/remix/falai.md); uses fal.ai pricing estimate API for image cost estimates |
 | `fireworks` | `FIREWORKS_API_KEY` | [`fireworks`](image/remix/fireworks.md) |
 | `google` | `GOOGLE_API_KEY` | [`google`](image/remix/google.md) |
 | `huggingface` | `HUGGINGFACE_API_KEY` | [`huggingface`](image/remix/huggingface.md) |

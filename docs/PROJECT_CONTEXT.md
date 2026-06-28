@@ -65,7 +65,7 @@ pip install -e ".[dev]"
 ```
 
 The package version is defined in both `pyproject.toml` and
-`src/easy_ai_clients/__init__.py`. Both currently show `0.13.0`.
+`src/easy_ai_clients/__init__.py`. Both currently show `0.13.1`.
 
 ## Repository Structure Summary
 
@@ -92,6 +92,7 @@ The package version is defined in both `pyproject.toml` and
 | `src/easy_ai_clients/music/` | Narrow validated music dispatcher, provider adapters, model registry, options catalog, style presets, and lyrics prompt builder | `docs/music/`, `tests/test_music_*.py` |
 | `src/easy_ai_clients/video/` | Video operation dispatchers, async helpers, provider adapters, HeyGen resources, Replicate avatar-video support, and video cost helpers | `docs/video/`, `tests/test_video_contract.py`, `tests/test_video_async_refs.py` |
 | `src/easy_ai_clients/_heygen.py` | Shared HeyGen auth, JSON request, asset, polling, status, and download helpers | `src/easy_ai_clients/video/`, `src/easy_ai_clients/media/`, `src/easy_ai_clients/webhooks/`, `src/easy_ai_clients/account/` |
+| `src/easy_ai_clients/_falai_pricing.py` | Shared fal.ai pricing estimate helper for image and video adapters | `src/easy_ai_clients/image/_common/falai_pricing.py`, `src/easy_ai_clients/video/_falai_pricing.py`, `tests/test_image_falai_cost.py`, `tests/test_video_contract.py` |
 | `src/easy_ai_clients/media/` | Provider asset upload/delete dispatcher; currently HeyGen-backed | `docs/media/heygen.md` |
 | `src/easy_ai_clients/webhooks/` | Provider webhook endpoint and event dispatcher; currently HeyGen-backed | `docs/webhooks/heygen.md` |
 | `src/easy_ai_clients/account/` | Provider account/current-user dispatcher; currently HeyGen-backed | `docs/account/heygen.md` |
@@ -126,6 +127,20 @@ The wrapper sends the `model` value exactly as provided, does not use local
 aliases, forwards provider kwargs into the OpenRouter request body, and can
 refresh provider-reported costs through
 `image.update_cost("analyze", result, api="openrouter")`.
+
+### Fal.ai Image Cost Flow
+
+`image.generate`, `image.edit`, and `image.remix` with `api="falai"` call the
+official fal.ai `POST /models/pricing/estimate` platform endpoint before the
+queue generation call. The returned cost is saved as
+`cost_source="fal_pricing_estimate_api"` with `cost_is_estimated=True`.
+
+`billing_unit_quantity` and `unit_quantity` are consumed by the wrapper for the
+pricing estimate and are not forwarded to the model payload. If neither is
+provided, image operations estimate one output image by default, or `num_images`
+when supplied. The queue result itself is not treated as final billing
+reconciliation; request ids remain available for future usage/billing-event
+lookups outside the current helper.
 
 ### Music Flow
 
@@ -324,6 +339,7 @@ validation paths, not as proof of current pass status:
 python -m compileall -q src tests
 python -m pytest tests/test_imports.py -q
 python -m pytest tests/test_documentation_coverage.py -q
+python -m pytest tests/test_image_falai_cost.py
 python -m pytest
 python -m ruff check src tests
 python -m build
@@ -339,6 +355,13 @@ Remove-Item Env:EASY_AI_CLIENTS_LIVE_VIDEO,Env:EASY_AI_CLIENTS_LIVE_HEYGEN,Env:E
 
 The test suite includes gated live modules marked with `pytest.mark.live`.
 Default local validation should not call paid provider APIs.
+
+For the 0.13.1 fal.ai image cost update, local validation used
+`python -m compileall -q src tests Video_Musical\gerar_artefatos.py`,
+`python -m ruff check src tests Video_Musical\gerar_artefatos.py`, and
+`python -m pytest -m "not live"`. A paid fal.ai image smoke test was also run
+against local `src` code and returned `cost_source="fal_pricing_estimate_api"`
+with a non-zero estimated USD cost.
 
 `tests/test_live_music.py` is the gated live music smoke test. When
 `EASY_AI_CLIENTS_LIVE_MUSIC=1` and `EASY_AI_CLIENTS_LIVE_MUSIC_API` are set, it
@@ -405,6 +428,8 @@ runtime process manager was found.
   file explicitly.
 - `image.generate`, `image.edit`, and `image.remix` preserve `cust_usd` as a
   legacy alias.
+- Fal.ai image costs are official pre-run estimates, not final billing-event
+  reconciliation.
 - Unknown costs are represented explicitly with `cost_source="unavailable"` and
   supporting warning or lookup metadata when available.
 - Live tests can call paid provider APIs only when explicit gates are set.

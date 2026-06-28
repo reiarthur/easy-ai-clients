@@ -3,6 +3,20 @@
 All notable changes to **easy-ai-clients** are documented in this file.
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1 - 2026-06-28
+
+### Added
+
+- Added fal.ai image cost metadata for `image.generate`, `image.edit`, and
+  `image.remix` using the official pricing estimate API. Results are marked
+  with `cost_source="fal_pricing_estimate_api"` and
+  `cost_is_estimated=True`.
+
+### Changed
+
+- Centralized fal.ai unit-price estimation logic so image and video adapters
+  share the same pricing estimate contract.
+
 ## 0.13.0 - 2026-06-26
 
 ### Added

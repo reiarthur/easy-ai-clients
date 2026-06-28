@@ -32,6 +32,7 @@ tests/artefatos_testes/
 /audio.mp3
 /audio.txt
 /outputs/
+/Video_Musical/
 /temp_*/
 /tmp_*/
 docs/audio/transcribe/live_multilingual_benchmark.md
@@ -48,8 +49,6 @@ TEMP_PROMPT*.md
 PROMPT_*.md
 prompt_atualizar_lib.md
 
-# Local media workspace, not part of the library release
-/Video_Musical/
 
 # IDE
 .idea/

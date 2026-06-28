@@ -1,8 +1,9 @@
 """fal.ai pricing helpers for video operations."""
 
-from ._shared import fal_estimate_unit_price, require_env
+from .._falai_pricing import FAL_ESTIMATE_OPTIONS, fal_estimate_unit_price
+from ._shared import require_env
 
-FAL_ESTIMATE_OPTIONS = {"billing_unit_quantity", "unit_quantity"}
+__all__ = ["FAL_ESTIMATE_OPTIONS", "fal_pricing_estimate"]
 
 
 def fal_pricing_estimate(model, kwargs, env_name):
@@ -11,7 +12,10 @@ def fal_pricing_estimate(model, kwargs, env_name):
         return None
     value = float(quantity)
     if value <= 0:
-        raise ValueError("billing_unit_quantity/unit_quantity must be greater than zero for fal.ai pricing estimates.")
+        raise ValueError(
+            "billing_unit_quantity/unit_quantity must be greater than zero for "
+            "fal.ai pricing estimates."
+        )
     try:
         api_key = require_env(env_name, "fal.ai")
         return fal_estimate_unit_price(

@@ -309,6 +309,11 @@ Return keys for these operations:
 The legacy `cust_usd` key is preserved as an alias. New integrations should
 prefer the standardized `cost_usd` metadata.
 
+Fal.ai `image.generate`, `image.edit`, and `image.remix` use the official
+fal.ai pricing estimate API when `FAL_KEY` is available. These results use
+`cost_source="fal_pricing_estimate_api"` and `cost_is_estimated=True`; they are
+not post-run billing-event reconciliations.
+
 Image inputs can be local paths, public `http` / `https` URLs, raw base64 image
 strings, or base64 data URLs. For `image.edit`, the public mask convention is
 black = editable and white = preserve.

@@ -252,6 +252,11 @@ Cost values are best-effort normalized USD values. Unknown costs use
 `cost_source="unavailable"` with supporting warnings or lookup-error metadata
 when available.
 
+Fal.ai image generation, editing, and remixing use the official fal.ai pricing
+estimate API when `FAL_KEY` is available. The returned value is marked with
+`cost_source="fal_pricing_estimate_api"` and `cost_is_estimated=True`, because
+it is an estimate rather than post-run billing reconciliation.
+
 ## Errors
 
 Public operations return normalized failure dictionaries when possible. Error

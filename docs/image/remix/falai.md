@@ -25,6 +25,9 @@ Model/catalog documentation:
 Pricing documentation:
 - https://fal.ai/pricing
 - https://fal.ai/models
+- https://fal.ai/docs/platform-apis/v1/models/pricing/estimate
+- https://fal.ai/docs/platform-apis/v1/models/usage
+- https://fal.ai/docs/platform-apis/v1/models/billing-events
 
 ## Current Wrapper Default
 
@@ -44,13 +47,18 @@ For `remix`, the public signature intentionally has no dedicated `model` paramet
 
 Supported public keyword parameters are provider-native whenever practical. Unsupported keyword arguments return a normalized warning or analyze output instead of being silently ignored.
 
-timeout_seconds, output_format, seed, vision_endpoint, num_images, image_size, guidance_scale, num_inference_steps, enable_safety_checker, sync_mode, and fal_payload for model-specific schema fields.
+timeout_seconds, output_format, seed, vision_endpoint, num_images, image_size, guidance_scale, num_inference_steps, enable_safety_checker, sync_mode, billing_unit_quantity, unit_quantity, and fal_payload for model-specific schema fields.
 
 Operational keyword parameters:
 
 - `timeout_seconds`: request or polling timeout, default chosen per provider/domain.
 - `mask`: accepted by `edit` wrappers where relevant; the public mask contract remains black = editable and white = protected.
 - `base_image`: accepted by `remix` as a keyword where a provider supports or needs an anchor image concept.
+- `billing_unit_quantity` / `unit_quantity`: optional cost-estimate quantity.
+  These values are consumed by the wrapper for the fal.ai pricing estimate API
+  and are not forwarded to the model payload. When neither value is supplied,
+  remix estimates one output image by default, or `num_images` when it is
+  provided.
 
 ## Model Coverage
 
@@ -89,7 +97,20 @@ print(result)
 
 ## Pricing Notes
 
-Costs are exact only when the provider exposes usage or fixed per-request pricing that this repository can map deterministically. Otherwise the wrapper returns 0.0 with a warning or with the safest available estimate. OpenRouter costs can be refined with image.update_cost("remix", result, api="openrouter") when a request_id is available.
+For fal.ai image remixing, the queue result does not document a final
+per-request cost field. The wrapper therefore calls the official
+`POST /models/pricing/estimate` platform endpoint before remixing and stores
+that value as `cost_source="fal_pricing_estimate_api"` with
+`cost_is_estimated=True`.
+
+This is an official estimate, not a post-run billing reconciliation. The
+returned `cost_details` include the pricing estimate payload and the unit
+quantity used. If the pricing estimate API is unavailable, the remix can still
+complete and the result keeps `cost_source="unavailable"` with the lookup error
+in `cost_details`.
+
+OpenRouter costs can be refined with `image.update_cost("remix", result,
+api="openrouter")` when a `request_id` is available.
 
 ## Validation Note
 
